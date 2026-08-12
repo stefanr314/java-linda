@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>rs.ac.bg.etf.kdp</groupId>
+    <artifactId>examples</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>primes</artifactId>
+  <packaging>jar</packaging>
+
+  <name>java-linda :: examples :: primes</name>
+  <description>
+    Sample user job: seeds candidate tuples and distributes primality
+    checks across workstations via eval(), written only against the
+    Linda interface.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>rs.ac.bg.etf.kdp</groupId>
+      <artifactId>common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>rs.ac.bg.etf.kdp</groupId>
+      <artifactId>linda-client</artifactId>
+    </dependency>
+  </dependencies>
+</project>

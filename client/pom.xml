@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>rs.ac.bg.etf.kdp</groupId>
+    <artifactId>java-linda</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>client</artifactId>
+  <packaging>jar</packaging>
+
+  <name>java-linda :: client</name>
+  <description>
+    End-user program used to submit jobs to the server, disconnect,
+    reconnect later, query status, and fetch results.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>rs.ac.bg.etf.kdp</groupId>
+      <artifactId>common</artifactId>
+    </dependency>
+  </dependencies>
+</project>

@@ -26,67 +26,67 @@ import java.io.Serializable;
  */
 public interface Linda extends Serializable {
 
-    /**
-     * Publishes a tuple into the space.
-     *
-     * @param tuple the tuple to store; no field may be {@code null}
-     * @throws IllegalArgumentException if {@code tuple} or any of its
-     *         fields is {@code null}
-     */
-    void out(String[] tuple);
+	/**
+	 * Publishes a tuple into the space.
+	 *
+	 * @param tuple the tuple to store; no field may be {@code null}
+	 * @throws IllegalArgumentException if {@code tuple} or any of its
+	 *                                  fields is {@code null}
+	 */
+	void out(String[] tuple);
 
-    /**
-     * Blocks until a tuple matching {@code tuple} is available, removes it
-     * from the space, and fills every {@code null} field of {@code tuple}
-     * with the corresponding value from the matched tuple.
-     *
-     * @param tuple the template; {@code null} fields act as wildcards and
-     *              are filled in place
-     */
-    void in(String[] tuple);
+	/**
+	 * Blocks until a tuple matching {@code tuple} is available, removes it
+	 * from the space, and fills every {@code null} field of {@code tuple}
+	 * with the corresponding value from the matched tuple.
+	 *
+	 * @param tuple the template; {@code null} fields act as wildcards and
+	 *              are filled in place
+	 */
+	void in(String[] tuple);
 
-    /**
-     * Non-blocking variant of {@link #in}.
-     *
-     * @param tuple the template; {@code null} fields act as wildcards and
-     *              are filled in place if a match is found
-     * @return {@code true} if a matching tuple was found and removed,
-     *         {@code false} otherwise
-     */
-    boolean inp(String[] tuple);
+	/**
+	 * Non-blocking variant of {@link #in}.
+	 *
+	 * @param tuple the template; {@code null} fields act as wildcards and
+	 *              are filled in place if a match is found
+	 * @return {@code true} if a matching tuple was found and removed,
+	 * {@code false} otherwise
+	 */
+	boolean inp(String[] tuple);
 
-    /**
-     * Blocks until a tuple matching {@code tuple} is available and fills
-     * every {@code null} field of {@code tuple} with the corresponding
-     * value from the matched tuple, without removing it from the space.
-     *
-     * @param tuple the template; {@code null} fields act as wildcards and
-     *              are filled in place
-     */
-    void rd(String[] tuple);
+	/**
+	 * Blocks until a tuple matching {@code tuple} is available and fills
+	 * every {@code null} field of {@code tuple} with the corresponding
+	 * value from the matched tuple, without removing it from the space.
+	 *
+	 * @param tuple the template; {@code null} fields act as wildcards and
+	 *              are filled in place
+	 */
+	void rd(String[] tuple);
 
-    /**
-     * Non-blocking variant of {@link #rd}.
-     *
-     * @param tuple the template; {@code null} fields act as wildcards and
-     *              are filled in place if a match is found
-     * @return {@code true} if a matching tuple was found, {@code false}
-     *         otherwise
-     */
-    boolean rdp(String[] tuple);
+	/**
+	 * Non-blocking variant of {@link #rd}.
+	 *
+	 * @param tuple the template; {@code null} fields act as wildcards and
+	 *              are filled in place if a match is found
+	 * @return {@code true} if a matching tuple was found, {@code false}
+	 * otherwise
+	 */
+	boolean rdp(String[] tuple);
 
-    /**
-     * Runs {@code thread} asynchronously on a free workstation, sharing
-     * this job's tuple space.
-     *
-     * <p>{@code Runnable} is not itself {@link Serializable}: job authors
-     * must supply a class that implements both {@link Runnable} and
-     * {@link Serializable}. Lambdas will not work, since a lambda's
-     * synthetic class is not guaranteed serializable and captures its
-     * enclosing instance implicitly.
-     *
-     * @param name  a human-readable name for the spawned activity
-     * @param thread the task to run; must also implement {@link Serializable}
-     */
-    void eval(String name, Runnable thread);
+	/**
+	 * Runs {@code thread} asynchronously on a free workstation, sharing
+	 * this job's tuple space.
+	 *
+	 * <p>{@code Runnable} is not itself {@link Serializable}: job authors
+	 * must supply a class that implements both {@link Runnable} and
+	 * {@link Serializable}. Lambdas will not work, since a lambda's
+	 * synthetic class is not guaranteed serializable and captures its
+	 * enclosing instance implicitly.
+	 *
+	 * @param name   a human-readable name for the spawned activity
+	 * @param thread the task to run; must also implement {@link Serializable}
+	 */
+	void eval(String name, Runnable thread);
 }

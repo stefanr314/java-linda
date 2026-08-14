@@ -22,3 +22,6 @@ Thumbs.db
 .mvn/wrapper/maven-wrapper.jar
 release.properties
 dependency-reduced-pom.xml
+
+#todo manager
+.todo

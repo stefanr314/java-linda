@@ -6,10 +6,10 @@ package rs.ac.bg.etf.kdp.client;
  */
 public final class ClientMain {
 
-    private ClientMain() {
-    }
+	private ClientMain() {
+	}
 
-    public static void main(String[] args) {
-        throw new UnsupportedOperationException("not yet implemented");
-    }
+	public static void main(String[] args) {
+		throw new UnsupportedOperationException("not yet implemented");
+	}
 }

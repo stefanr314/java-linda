@@ -1,12 +1,13 @@
 package rs.ac.bg.etf.kdp.common.protocol;
 
-import rs.ac.bg.etf.kdp.common.JobId;
-
 /**
- * First message sent on every connection: identifies which job's tuple
- * space this connection should be attached to.
+ * First message sent on every connection: identifies the sender initializing the communication towards server.
+ * <p>
+ * Three distinct values/implementations allowed which represent the initial messages sent from either workstation,
+ * client or JVM instance that runs Linda code.
+ * </p>
  *
- * @param jobId the job whose {@code TupleSpace} this connection joins
  */
-public record Hello(JobId jobId) implements Message {
+public sealed interface Hello extends Message
+		permits WorkstationHello, ClientHello, LindaHello {
 }

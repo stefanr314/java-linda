@@ -6,11 +6,12 @@ import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 
-//TODO: must be thread safe
 public final class WorkstationContext {
 	private final WorkstationInfo info;
 	private final Socket socket;
 	private final ObjectOutputStream out;
+
+	private final Object writeLock = new Object();  // keeping it private so callers can't acquire lock
 
 	public WorkstationContext(WorkstationInfo info, Socket socket, ObjectOutputStream out) {
 		this.info = info;
@@ -30,11 +31,13 @@ public final class WorkstationContext {
 	 * @param message object/message to be written/sent.
 	 * @throws IOException regular exceptions when working with I/O streams (socket in this case).
 	 */
-	public synchronized void send(Object message) throws IOException {
-		out.writeObject(message);
+	public void send(Object message) throws IOException {
+		synchronized (writeLock) {
+			out.writeObject(message);
 
-		out.reset();
-		out.flush();
+			out.reset();
+			out.flush();
+		}
 	}
 
 	public void disconnect() {
@@ -50,11 +53,15 @@ public final class WorkstationContext {
 	}
 
 	public String hostName() {
-		return info.hostName();  // direct reference fine since its record class
+		return info.hostName();
 	}
 
 	@Override
 	public String toString() {
 		return info.toString();
+	}
+
+	public boolean isStaleFor(long timeout) {
+		return false; //FIXME
 	}
 }

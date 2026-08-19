@@ -26,11 +26,10 @@ import java.util.logging.Logger;
  */
 public final class ServerMain implements AutoCloseable {
 
-	private static final Logger logger = Logger.getLogger(ServerMain.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(ServerMain.class.getName());
 
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
-
 
 	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
 
@@ -61,13 +60,13 @@ public final class ServerMain implements AutoCloseable {
 				}
 			}));
 
-			logger.log(Level.INFO, "Listening on port: " + server.port());
+			LOGGER.log(Level.INFO, "Listening on port: " + server.port());
 
 			server.serve();
 		} catch (IOException e) {
-			logger.log(Level.SEVERE, "IOException occurred: " + e.getMessage(), e);
+			LOGGER.log(Level.SEVERE, "IOException occurred: " + e.getMessage(), e);
 		} catch (Exception e) {
-			logger.log(Level.SEVERE,
+			LOGGER.log(Level.SEVERE,
 					"Exception of type" + e.getClass().getSimpleName() + " occurred: " + e.getMessage(), e);
 		}
 	}
@@ -80,13 +79,12 @@ public final class ServerMain implements AutoCloseable {
 	public void serve() {
 		try {
 			while (running) {
-				//FIXME: beware all opened connection must be properly shutdown
 				Socket accepted = serverSocket.accept();
 				connections.put(accepted, Boolean.TRUE);
 				executor.submit(() -> handle(accepted));
 			}
 		} catch (IOException e) {
-			if (running) logger.log(Level.SEVERE, "Failed to accept the connection: " + e.getMessage(), e);
+			if (running) LOGGER.log(Level.SEVERE, "Failed to accept the connection: " + e.getMessage(), e);
 		}
 	}
 
@@ -116,7 +114,7 @@ public final class ServerMain implements AutoCloseable {
 		} catch (EOFException | SocketException e) {
 			// normal behaviour upon receiving sentinel value from other ended communication side;
 		} catch (IOException | ClassNotFoundException e) {
-			logger.log(Level.SEVERE,
+			LOGGER.log(Level.SEVERE,
 					"Exception of type" + e.getClass().getSimpleName()
 							+ " occurred with message: " + e.getMessage(), e);
 		} finally {
@@ -128,7 +126,7 @@ public final class ServerMain implements AutoCloseable {
 	public void close() throws IOException {
 		if (!running) return;  // prevent double cleaning triggered by main thread awakened by shutdown hook
 
-		logger.log(Level.INFO, "Closing the server...");
+		LOGGER.log(Level.INFO, "Closing the server...");
 
 		running = false;
 		serverSocket.close();
@@ -146,8 +144,13 @@ public final class ServerMain implements AutoCloseable {
 		executor.shutdownNow();
 
 		try {
-			var ignored = executor.awaitTermination(5, TimeUnit.SECONDS);
+			if (!executor.awaitTermination(20, TimeUnit.SECONDS)) {
+				LOGGER.log(Level.SEVERE, "Threads where not shutdown properly.");
+			}
 		} catch (InterruptedException e) {
+			// re-try if interrupt happened
+			executor.shutdownNow();
+
 			Thread.currentThread().interrupt();
 		}
 	}

@@ -4,6 +4,7 @@ import rs.ac.bg.etf.kdp.common.Linda;
 import rs.ac.bg.etf.kdp.common.TupleMatcher;
 import rs.ac.bg.etf.kdp.common.exceptions.SuspendedTupleSpaceException;
 
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -24,6 +25,9 @@ import java.util.concurrent.locks.ReentrantLock;
  * await()} is the expected steady state, not a failure.
  */
 public final class TupleSpace implements Linda {
+
+	@Serial
+	private static final long serialVersionUID = -3743050381351179049L;
 
 	private final List<String[]> tuples = new ArrayList<>();
 	private final ReentrantLock lock = new ReentrantLock();
@@ -150,7 +154,7 @@ public final class TupleSpace implements Linda {
 	 */
 	private String[] findMatch(String[] template) {
 		Objects.requireNonNull(template);
-		
+
 		for (String[] candidate : tuples) {
 			if (TupleMatcher.matches(candidate, template)) {
 				return candidate;

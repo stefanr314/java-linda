@@ -1,29 +1,20 @@
 package rs.ac.bg.etf.kdp.server;
 
-import java.net.Socket;
+
+import java.io.IOException;
 
 /**
- * Handles a single accepted socket connection: reads
- * {@link rs.ac.bg.etf.kdp.common.protocol.Message}s off the wire, applies
- * them to the {@link TupleSpace} of the job the connection's
- * {@link rs.ac.bg.etf.kdp.common.protocol.Hello} named, and writes back
- * replies.
+ * Runs the whole conversation on one accepted connection, after the Hello has been read.
  *
- * <p>Instances run on the server's single cached thread pool alongside
- * every other connection, of every job; there is no per-job pool.
+ * <p>The accept-loop thread that read the Hello calls {@link #run()} directly and stays there for
+ * the lifetime of the connection. It must not hand off to another pooled thread: with nobody
+ * blocked in {@code readObject()}, incoming messages sit in the kernel buffer until TCP stalls.
+ *
+ * <p>Implementations are confined to that one thread and need no synchronization of their own.
+ * State they share with the heartbeat sweep or the scheduler lives in {@link WorkstationContext}
+ * and is guarded there.
  */
-public final class ConnectionHandler implements Runnable {
+public interface ConnectionHandler {
 
-    private final Socket socket;
-    private final JobRegistry jobRegistry;
-
-    public ConnectionHandler(Socket socket, JobRegistry jobRegistry) {
-        this.socket = socket;
-        this.jobRegistry = jobRegistry;
-    }
-
-    @Override
-    public void run() {
-        throw new UnsupportedOperationException("not yet implemented");
-    }
+	void run() throws IOException, ClassNotFoundException;
 }

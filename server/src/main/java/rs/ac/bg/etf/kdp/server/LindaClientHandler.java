@@ -1,0 +1,10 @@
+package rs.ac.bg.etf.kdp.server;
+
+import java.io.IOException;
+
+public class LindaClientHandler implements ConnectionHandler {
+	@Override
+	public void run() throws IOException, ClassNotFoundException {
+		throw new UnsupportedOperationException("TO be implemented");
+	}
+}

@@ -1,7 +1,7 @@
 package rs.ac.bg.etf.kdp.server;
 
-import rs.ac.bg.etf.kdp.common.WorkstationInfo;
-import rs.ac.bg.etf.kdp.common.protocol.*;
+import rs.ac.bg.etf.kdp.common.protocol.Failure;
+import rs.ac.bg.etf.kdp.common.protocol.Hello;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -10,12 +10,13 @@ import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Entry point for the central server: accepts connections from
@@ -25,16 +26,24 @@ import java.util.concurrent.TimeUnit;
  */
 public final class ServerMain implements AutoCloseable {
 
+	private static final Logger logger = Logger.getLogger(ServerMain.class.getName());
+
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
 
-	private final Map<String, WorkstationInfo> workstations = new ConcurrentHashMap<>();
+
+	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
+
+	private final JobRegistry jobRegistry = new JobRegistry();
+
+	private final ConnectionHandlerFactory connectionHandlerFactory =
+			new ConnectionHandlerFactory(workstationRegistry, jobRegistry);
 
 	private final Map<Socket, Boolean> connections = new ConcurrentHashMap<>();
 
 	private volatile boolean running;
 
-	private ServerMain(int port) throws IOException {
+	public ServerMain(int port) throws IOException {
 		if (port < 0) throw new IllegalArgumentException();
 
 		this.serverSocket = new ServerSocket(port);
@@ -45,20 +54,21 @@ public final class ServerMain implements AutoCloseable {
 		int port = (args.length > 0 && args[0] != null) ? Integer.parseInt(args[0]) : 4040;
 
 		try (ServerMain server = new ServerMain(port)) {
-			Thread shutdownHook = new Thread(() -> {
+			Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 				try {
 					server.close();
 				} catch (IOException ignored) {
 				}
-			});
-			Runtime.getRuntime().addShutdownHook(shutdownHook);
-			System.out.println("Listening on port: " + port);
+			}));
+
+			logger.log(Level.INFO, "Listening on port: " + server.port());
+
 			server.serve();
 		} catch (IOException e) {
-			System.err.println("IO exception with message: " + e.getMessage());
-			e.printStackTrace();
+			logger.log(Level.SEVERE, "IOException occurred: " + e.getMessage(), e);
 		} catch (Exception e) {
-			e.printStackTrace();
+			logger.log(Level.SEVERE,
+					"Exception of type" + e.getClass().getSimpleName() + " occurred: " + e.getMessage(), e);
 		}
 	}
 
@@ -66,14 +76,17 @@ public final class ServerMain implements AutoCloseable {
 	 * Main method for running the server instance; accept communication init on server socket and delegate it to
 	 * thread from poll. This is regular concurrent behaviour of every server.
 	 *
-	 * @throws IOException - upon opening server socket
 	 */
-	public void serve() throws IOException {
-		while (running) {
-			//FIXME: beware all opened connection must be properly shutdown
-			Socket accepted = serverSocket.accept();
-			connections.put(accepted, Boolean.TRUE);
-			executor.submit(() -> handle(accepted));
+	public void serve() {
+		try {
+			while (running) {
+				//FIXME: beware all opened connection must be properly shutdown
+				Socket accepted = serverSocket.accept();
+				connections.put(accepted, Boolean.TRUE);
+				executor.submit(() -> handle(accepted));
+			}
+		} catch (IOException e) {
+			if (running) logger.log(Level.SEVERE, "Failed to accept the connection: " + e.getMessage(), e);
 		}
 	}
 
@@ -98,49 +111,25 @@ public final class ServerMain implements AutoCloseable {
 					return;
 				}
 
-				// TODO: write strategy with hello strategy acknowledgement
-				if (hello instanceof WorkstationHello wsHello) {
-					// register the workstation; TODO: this will be done by the scheduler class
-					workstations.put(wsHello.host(), wsHello.wsInfo());
-
-					// return successful registration
-					out.writeObject(new Reply("Workstation %s successfully registered".formatted(wsHello.host())));
-					out.flush();
-
-					System.out.println("Workstation successfully registered with info: " + wsHello.wsInfo().toString());
-				} else if (hello instanceof ClientHello clHello) {
-					System.out.println("Client connected with username: " + clHello.user());
-				} else if (hello instanceof LindaHello lindaHello) {
-					System.out.println("JVM Linda client instance connected on job with id: " + lindaHello.jobId());
-				}
-
-				out.writeObject(new Reply("Hello acknowledged."));
-				out.flush();
-
-				proceedCommunication(out, in);
+				connectionHandlerFactory.getHandler(hello, socket, out, in).run();
 			}
 		} catch (EOFException | SocketException e) {
 			// normal behaviour upon receiving sentinel value from other ended communication side;
 		} catch (IOException | ClassNotFoundException e) {
-			System.err.println("IO Exception on opening connection with message: " + e.getMessage());
-			e.printStackTrace(); //FIXME: add the logger instance
+			logger.log(Level.SEVERE,
+					"Exception of type" + e.getClass().getSimpleName()
+							+ " occurred with message: " + e.getMessage(), e);
 		} finally {
 			connections.remove(socket);
 		}
 	}
 
-	//FIXME: strategy candidate
-	private void proceedCommunication(ObjectOutputStream out, ObjectInputStream in) {
-		// handle the rest of communication between the sides
-		System.out.println("Communication realised. U have communication with server");
-//		for (; ; ) {
-//			// do the job
-//		}
-	}
-
 	@Override
 	public void close() throws IOException {
-		System.out.println("Closing the server...");
+		if (!running) return;  // prevent double cleaning triggered by main thread awakened by shutdown hook
+
+		logger.log(Level.INFO, "Closing the server...");
+
 		running = false;
 		serverSocket.close();
 
@@ -152,6 +141,7 @@ public final class ServerMain implements AutoCloseable {
 			} catch (IOException ignored) {
 			}
 		});
+
 		// shutdown the threads even the waiting ones
 		executor.shutdownNow();
 
@@ -162,7 +152,11 @@ public final class ServerMain implements AutoCloseable {
 		}
 	}
 
-	public List<String> workstation() {
-		return List.copyOf(workstations.keySet());
+	public int workstationsSize() {
+		return workstationRegistry.size();
+	}
+
+	public int port() {
+		return serverSocket.getLocalPort();
 	}
 }

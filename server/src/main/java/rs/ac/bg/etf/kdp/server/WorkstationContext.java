@@ -13,10 +13,14 @@ public final class WorkstationContext {
 
 	private final Object writeLock = new Object();  // keeping it private so callers can't acquire lock
 
+	private volatile long reportedNanoTime;
+	private volatile long roundTripTime;
+
 	public WorkstationContext(WorkstationInfo info, Socket socket, ObjectOutputStream out) {
 		this.info = info;
 		this.socket = socket;
 		this.out = out;
+		this.reportedNanoTime = System.nanoTime();
 	}
 
 	/**
@@ -61,7 +65,21 @@ public final class WorkstationContext {
 		return info.toString();
 	}
 
-	public boolean isStaleFor(long timeout) {
-		return false; //FIXME
+	public boolean staleTimeoutElapsed(long timeoutNanos) {
+		return System.nanoTime() - this.reportedNanoTime > timeoutNanos;
+	}
+
+	// NOTE: this method is package private so the heartbeat mechanism must live in the same package as the
+	// workstation context; letting this method be public might be too dangerous.
+	void reportAt(long nanoTime) {
+		this.reportedNanoTime = nanoTime;
+	}
+
+	public void recordRTT(long roundTripTime) {
+		this.roundTripTime = roundTripTime;
+	}
+
+	public long roundTripTime() {
+		return roundTripTime;
 	}
 }

@@ -1,8 +1,7 @@
 package rs.ac.bg.etf.kdp.workstation;
 
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
-import rs.ac.bg.etf.kdp.common.protocol.Failure;
-import rs.ac.bg.etf.kdp.common.protocol.WorkstationHello;
+import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.*;
 import java.net.Socket;
@@ -37,6 +36,9 @@ public final class WorkstationMain implements AutoCloseable {
 	private final String os;
 	private final String javaVersion;
 
+	private final ObjectOutputStream out;
+	private final Object sendLock = new Object();  // private lock pattern
+
 	public WorkstationMain(String serverHostname, int serverPort, int capacity) throws IOException {
 		this.socket = new Socket(serverHostname, serverPort);
 		this.parallelismCapacity = capacity;
@@ -45,6 +47,8 @@ public final class WorkstationMain implements AutoCloseable {
 		this.os = System.getProperty("os.name");
 		this.javaVersion = getJavaVersionFromRuntime();
 		this.hostname = "WS - " + UUID.randomUUID().getMostSignificantBits();
+
+		this.out = new ObjectOutputStream(socket.getOutputStream());
 	}
 
 	public static void main(String[] args) {
@@ -108,33 +112,52 @@ public final class WorkstationMain implements AutoCloseable {
 
 	public void run() {
 		try (socket;
-			 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+			 out) {
 			out.flush();
 			try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-				out.writeObject(new WorkstationHello(workstationInfo()));
-				out.flush();
+				send(new WorkstationHello(workstationInfo()));
 
 				Object ack = in.readObject();
 
 				if (ack instanceof Failure failure) throw new IOException("Handshake refused: " + failure.message());
 
 				// the rest of communication
-				waitForWork(out, in);
+				waitForWork(in);
 			}
 
 		} catch (EOFException | SocketException e) {
 			// server was closed
-			LOGGER.log(Level.INFO, "Server closed its socket or and of communication reached.");
+			LOGGER.log(Level.INFO, "Server closed its socket or an end of communication reached.");
 		} catch (IOException | ClassNotFoundException e) {
 			LOGGER.log(Level.SEVERE, "Error upon trying to communicate with the server: " + e.getMessage(), e);
 		}
 	}
 
-	//TODO: implement me
-	private void waitForWork(ObjectOutput out, ObjectInput in) throws IOException, ClassNotFoundException {
+	private void waitForWork(ObjectInput in) throws IOException, ClassNotFoundException {
 		for (; ; ) {
+			Object received = in.readObject();
 
-			Object o = in.readObject();
+			if (!(received instanceof Message)) {
+				send(new Failure("Unknown frame " + received.getClass().getSimpleName()));
+				continue;
+			}
+
+			if (received instanceof Ping ping) {
+				LOGGER.info("Server ping received, ponging back...");
+				send(new Pong(ping.timeNanos()));
+			} else if (received instanceof Pong pong) {
+				// server is alive
+			} else if (received instanceof Bye ignored) {
+				return; // communication ended
+			}
+		}
+	}
+
+	private void send(Object message) throws IOException {
+		synchronized (sendLock) {
+			out.writeObject(message);
+			out.reset();
+			out.flush();
 		}
 	}
 
@@ -158,7 +181,6 @@ public final class WorkstationMain implements AutoCloseable {
 	public WorkstationInfo workstationInfo() {
 		return new WorkstationInfo(hostname, os, javaVersion, parallelismCapacity);
 	}
-
 
 	private String getJavaVersionFromRuntime() {
 		Runtime.Version version = Runtime.version();

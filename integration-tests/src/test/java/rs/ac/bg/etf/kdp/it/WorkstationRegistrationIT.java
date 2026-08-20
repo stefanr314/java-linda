@@ -56,7 +56,11 @@ public class WorkstationRegistrationIT {
 			worker.setDaemon(true);
 			worker.start();
 
-			awaitUntil(() -> server.workstationsSize() == 1);
+			//  NOTE: since size() is based on estimated value no guarantees that in real-time operating mode the
+			//  result will be exactly one so at least one is better approximation. This test will pass even with the
+			//  exact value since no other threads are writing to the underlying concurrent hash map of workstation
+			//  registry.
+			awaitUntil(() -> server.workstationsSize() >= 1);
 		}
 	}
 

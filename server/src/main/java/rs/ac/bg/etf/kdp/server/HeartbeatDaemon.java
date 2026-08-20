@@ -18,8 +18,8 @@ public class HeartbeatDaemon implements AutoCloseable {
 
 	private final static Logger LOGGER = Logger.getLogger(HeartbeatDaemon.class.getName());
 
-	private final long interval;
-	private final long timeout;
+	private final long intervalMillis;
+	private final long timeoutNanos;
 	private final WorkstationRegistry workstationRegistry;
 	private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
 		Thread t = new Thread(r, "heartbeat checker");
@@ -29,29 +29,47 @@ public class HeartbeatDaemon implements AutoCloseable {
 	});
 	private final Runnable runner = this::sweeper;
 
-	public HeartbeatDaemon(long interval, long timeout, WorkstationRegistry workstationRegistry) {
-		this.interval = interval;
-		this.timeout = timeout;
+	public HeartbeatDaemon(long intervalMillis, long timeoutNanos, WorkstationRegistry workstationRegistry) {
+		this.intervalMillis = intervalMillis;
+		this.timeoutNanos = timeoutNanos;
 		this.workstationRegistry = workstationRegistry;
 	}
 
 	public void start() {
-		scheduler.scheduleWithFixedDelay(runner, 0, interval, TimeUnit.SECONDS);
+		LOGGER.info("Heartbeat mechanism started");
+		scheduler.scheduleWithFixedDelay(runner, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
 	}
 
+	/**
+	 * Timestamp will not be used by other machine in distributed system (workstation in this case). It will be
+	 * used by the server machine to determine the round-trip time (the machine that eventually sent the ping message)
+	 * and staleness detection. That requires monotic nanoTime clock to be used, since currentTimeMillis is OS's
+	 * wall-clock, and it's prone to abrupt changes (system or user).
+	 * <p>
+	 * Worth mentioning is the fact that this type of iteration on list of workstations derived from concurrent hash
+	 * map is not thread safe by design even though the returned list is the copy so no NPE will arise; the issue
+	 * becomes visible if the operation conducted on the workstation instances ( that at the time of checking might
+	 * not even live in registry) are not idempotent - meaning they alter the state of server invariants. With
+	 * methods {@link WorkstationContext#send} and {@link WorkstationContext#disconnect} this is not the case since
+	 * upon disconnected workstation, they (methods) merely throw errors that are logged (if send can not be
+	 * performed) or just ignored (if disconnect is called on already closed socket). This behaviour is expected.
+	 * </p>
+	 */
 	private void sweeper() {
-		// check for available stations
+		// check for available stations - not thread safe by design decision
 		for (WorkstationContext workstation : workstationRegistry.workstations()) {
 			// check if ws is stale
-			if (workstation.isStaleFor(timeout)) {
-
+			if (workstation.staleTimeoutElapsed(timeoutNanos)) {
+				LOGGER.log(Level.WARNING,
+						"Workstation %s did not respond before the timeout.".formatted(workstation.hostName()));
+				//TODO: client must determine the future of job
 				workstation.disconnect();
 				continue;
 			}
 
 			// send messages
 			try {
-				workstation.send(new Ping(System.currentTimeMillis()));
+				workstation.send(new Ping(System.nanoTime()));
 			} catch (IOException e) {
 				LOGGER.log(Level.WARNING, "Unable to send message to the workstation: " + workstation.hostName() + "." +
 						" Workstation will be disconnected.");
@@ -59,7 +77,6 @@ public class HeartbeatDaemon implements AutoCloseable {
 			}
 		}
 	}
-
 
 	@Override
 	public void close() {
@@ -74,6 +91,5 @@ public class HeartbeatDaemon implements AutoCloseable {
 
 			Thread.currentThread().interrupt();
 		}
-
 	}
 }

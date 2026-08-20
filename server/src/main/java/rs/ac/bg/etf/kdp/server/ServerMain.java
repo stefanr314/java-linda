@@ -28,12 +28,17 @@ public final class ServerMain implements AutoCloseable {
 
 	private static final Logger LOGGER = Logger.getLogger(ServerMain.class.getName());
 
+	private static final long HEARTBEAT_INTERVAL_MILLIS = TimeUnit.SECONDS.toMillis(10);
+	private static final long HEARTBEAT_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
+
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
 
 	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
 
 	private final JobRegistry jobRegistry = new JobRegistry();
+
+	private final HeartbeatDaemon heartbeat;
 
 	private final ConnectionHandlerFactory connectionHandlerFactory =
 			new ConnectionHandlerFactory(workstationRegistry, jobRegistry);
@@ -43,10 +48,12 @@ public final class ServerMain implements AutoCloseable {
 	private volatile boolean running;
 
 	public ServerMain(int port) throws IOException {
+
 		if (port < 0) throw new IllegalArgumentException();
 
 		this.serverSocket = new ServerSocket(port);
 		this.running = true;
+		this.heartbeat = new HeartbeatDaemon(HEARTBEAT_INTERVAL_MILLIS, HEARTBEAT_TIMEOUT_NANOS, workstationRegistry);
 	}
 
 	public static void main(String[] args) {
@@ -77,6 +84,9 @@ public final class ServerMain implements AutoCloseable {
 	 *
 	 */
 	public void serve() {
+		heartbeat.start();
+		LOGGER.info("Heartbeat daemon thread started.");
+
 		try {
 			while (running) {
 				Socket accepted = serverSocket.accept();
@@ -130,6 +140,7 @@ public final class ServerMain implements AutoCloseable {
 
 		running = false;
 		serverSocket.close();
+		heartbeat.close();
 
 		// close all the opened running connections
 		connections.keySet().forEach(socket ->

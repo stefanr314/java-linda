@@ -1,7 +1,9 @@
 package rs.ac.bg.etf.kdp.server;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -21,9 +23,15 @@ public final class WorkstationRegistry {
 	}
 
 	public Collection<WorkstationContext> workstations() {
-		return workstations.values();
+		return List.copyOf(workstations.values());
 	}
 
+	public Optional<WorkstationContext> find(String hostname) {
+		return Optional.ofNullable(workstations.get(hostname));
+	}
+
+	// NOTE: this method is more of an estimation rather than the exact size value; check concurrent map docs. Do not
+	// rely on it.
 	public int size() {
 		return workstations.size();
 	}

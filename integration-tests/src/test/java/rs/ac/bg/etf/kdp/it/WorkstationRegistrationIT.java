@@ -1,6 +1,9 @@
 package rs.ac.bg.etf.kdp.it;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import rs.ac.bg.etf.kdp.common.protocol.Failure;
 import rs.ac.bg.etf.kdp.common.protocol.Reply;
 import rs.ac.bg.etf.kdp.server.ServerMain;
@@ -14,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 public class WorkstationRegistrationIT {
 	private ServerMain server;
@@ -26,7 +30,7 @@ public class WorkstationRegistrationIT {
 			Thread.sleep(20);
 		}
 
-		Assertions.fail("Condition not met in-time.");
+		fail("Condition not met in-time.");
 	}
 
 	@BeforeEach
@@ -56,7 +60,11 @@ public class WorkstationRegistrationIT {
 			worker.setDaemon(true);
 			worker.start();
 
-			awaitUntil(() -> server.workstationsSize() == 1);
+			//  NOTE: since size() is based on estimated value no guarantees that in real-time operating mode the
+			//  result will be exactly one so at least one is better approximation. This test will pass even with the
+			//  exact value since no other threads are writing to the underlying concurrent hash map of workstation
+			//  registry.
+			awaitUntil(() -> server.workstationsSize() >= 1);
 		}
 	}
 

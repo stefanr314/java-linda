@@ -26,15 +26,19 @@ import java.util.logging.Logger;
  */
 public final class ServerMain implements AutoCloseable {
 
-	private static final Logger logger = Logger.getLogger(ServerMain.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(ServerMain.class.getName());
+
+	private static final long HEARTBEAT_INTERVAL_MILLIS = TimeUnit.SECONDS.toMillis(10);
+	private static final long HEARTBEAT_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30);
 
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
 
-
 	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
 
 	private final JobRegistry jobRegistry = new JobRegistry();
+
+	private final HeartbeatDaemon heartbeat;
 
 	private final ConnectionHandlerFactory connectionHandlerFactory =
 			new ConnectionHandlerFactory(workstationRegistry, jobRegistry);
@@ -44,10 +48,15 @@ public final class ServerMain implements AutoCloseable {
 	private volatile boolean running;
 
 	public ServerMain(int port) throws IOException {
+		this(port, HEARTBEAT_INTERVAL_MILLIS, HEARTBEAT_TIMEOUT_MILLIS);
+	}
+
+	public ServerMain(int port, long intervalMillis, long timeoutMillis) throws IOException {
 		if (port < 0) throw new IllegalArgumentException();
 
 		this.serverSocket = new ServerSocket(port);
 		this.running = true;
+		this.heartbeat = new HeartbeatDaemon(intervalMillis, TimeUnit.MILLISECONDS.toNanos(timeoutMillis), workstationRegistry);
 	}
 
 	public static void main(String[] args) {
@@ -61,13 +70,13 @@ public final class ServerMain implements AutoCloseable {
 				}
 			}));
 
-			logger.log(Level.INFO, "Listening on port: " + server.port());
+			LOGGER.log(Level.INFO, "Listening on port: " + server.port());
 
 			server.serve();
 		} catch (IOException e) {
-			logger.log(Level.SEVERE, "IOException occurred: " + e.getMessage(), e);
+			LOGGER.log(Level.SEVERE, "IOException occurred: " + e.getMessage(), e);
 		} catch (Exception e) {
-			logger.log(Level.SEVERE,
+			LOGGER.log(Level.SEVERE,
 					"Exception of type" + e.getClass().getSimpleName() + " occurred: " + e.getMessage(), e);
 		}
 	}
@@ -78,15 +87,17 @@ public final class ServerMain implements AutoCloseable {
 	 *
 	 */
 	public void serve() {
+		heartbeat.start();
+		LOGGER.info("Heartbeat daemon thread started.");
+
 		try {
 			while (running) {
-				//FIXME: beware all opened connection must be properly shutdown
 				Socket accepted = serverSocket.accept();
 				connections.put(accepted, Boolean.TRUE);
 				executor.submit(() -> handle(accepted));
 			}
 		} catch (IOException e) {
-			if (running) logger.log(Level.SEVERE, "Failed to accept the connection: " + e.getMessage(), e);
+			if (running) LOGGER.log(Level.SEVERE, "Failed to accept the connection: " + e.getMessage(), e);
 		}
 	}
 
@@ -116,7 +127,7 @@ public final class ServerMain implements AutoCloseable {
 		} catch (EOFException | SocketException e) {
 			// normal behaviour upon receiving sentinel value from other ended communication side;
 		} catch (IOException | ClassNotFoundException e) {
-			logger.log(Level.SEVERE,
+			LOGGER.log(Level.SEVERE,
 					"Exception of type" + e.getClass().getSimpleName()
 							+ " occurred with message: " + e.getMessage(), e);
 		} finally {
@@ -128,10 +139,11 @@ public final class ServerMain implements AutoCloseable {
 	public void close() throws IOException {
 		if (!running) return;  // prevent double cleaning triggered by main thread awakened by shutdown hook
 
-		logger.log(Level.INFO, "Closing the server...");
+		LOGGER.log(Level.INFO, "Closing the server...");
 
 		running = false;
 		serverSocket.close();
+		heartbeat.close();
 
 		// close all the opened running connections
 		connections.keySet().forEach(socket ->
@@ -146,14 +158,23 @@ public final class ServerMain implements AutoCloseable {
 		executor.shutdownNow();
 
 		try {
-			var ignored = executor.awaitTermination(5, TimeUnit.SECONDS);
+			if (!executor.awaitTermination(20, TimeUnit.SECONDS)) {
+				LOGGER.log(Level.SEVERE, "Threads where not shutdown properly.");
+			}
 		} catch (InterruptedException e) {
+			// re-try if interrupt happened
+			executor.shutdownNow();
+
 			Thread.currentThread().interrupt();
 		}
 	}
 
 	public int workstationsSize() {
 		return workstationRegistry.size();
+	}
+
+	public WorkstationRegistry workstations() {
+		return workstationRegistry;
 	}
 
 	public int port() {

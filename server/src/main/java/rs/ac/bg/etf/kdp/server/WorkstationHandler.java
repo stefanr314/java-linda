@@ -58,8 +58,9 @@ public class WorkstationHandler implements ConnectionHandler {
 			if (!registry.unregister(context)) {
 				LOGGER.log(Level.SEVERE, "Workstation was not removed from registry space. Dead instance lurking " +
 						"around.");
+			} else {
+				LOGGER.info(() -> "Workstation unregistered " + context);
 			}
-			LOGGER.info(() -> "Workstation unregistered " + context);
 		}
 	}
 
@@ -68,7 +69,8 @@ public class WorkstationHandler implements ConnectionHandler {
 			Object message = in.readObject();
 
 			if (message instanceof Pong pong) {
-				// React to the ping initiated from heartbeat mechanism
+				context.reportAt(System.nanoTime());
+				context.recordRTT(System.nanoTime() - pong.returnNanoTime());
 			} else if (message instanceof Ping ping) {
 				// workstation should not ping server but that type of communication is not harmful tbh...
 			} else if (message instanceof Bye ignored) {

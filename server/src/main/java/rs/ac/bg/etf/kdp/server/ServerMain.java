@@ -29,7 +29,7 @@ public final class ServerMain implements AutoCloseable {
 	private static final Logger LOGGER = Logger.getLogger(ServerMain.class.getName());
 
 	private static final long HEARTBEAT_INTERVAL_MILLIS = TimeUnit.SECONDS.toMillis(10);
-	private static final long HEARTBEAT_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
+	private static final long HEARTBEAT_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30);
 
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
@@ -48,12 +48,15 @@ public final class ServerMain implements AutoCloseable {
 	private volatile boolean running;
 
 	public ServerMain(int port) throws IOException {
+		this(port, HEARTBEAT_INTERVAL_MILLIS, HEARTBEAT_TIMEOUT_MILLIS);
+	}
 
+	public ServerMain(int port, long intervalMillis, long timeoutMillis) throws IOException {
 		if (port < 0) throw new IllegalArgumentException();
 
 		this.serverSocket = new ServerSocket(port);
 		this.running = true;
-		this.heartbeat = new HeartbeatDaemon(HEARTBEAT_INTERVAL_MILLIS, HEARTBEAT_TIMEOUT_NANOS, workstationRegistry);
+		this.heartbeat = new HeartbeatDaemon(intervalMillis, TimeUnit.MILLISECONDS.toNanos(timeoutMillis), workstationRegistry);
 	}
 
 	public static void main(String[] args) {
@@ -168,6 +171,10 @@ public final class ServerMain implements AutoCloseable {
 
 	public int workstationsSize() {
 		return workstationRegistry.size();
+	}
+
+	public WorkstationRegistry workstations() {
+		return workstationRegistry;
 	}
 
 	public int port() {

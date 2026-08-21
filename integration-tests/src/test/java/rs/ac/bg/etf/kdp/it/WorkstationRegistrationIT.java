@@ -1,6 +1,9 @@
 package rs.ac.bg.etf.kdp.it;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import rs.ac.bg.etf.kdp.common.protocol.Failure;
 import rs.ac.bg.etf.kdp.common.protocol.Reply;
 import rs.ac.bg.etf.kdp.server.ServerMain;
@@ -14,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 public class WorkstationRegistrationIT {
 	private ServerMain server;
@@ -26,7 +30,7 @@ public class WorkstationRegistrationIT {
 			Thread.sleep(20);
 		}
 
-		Assertions.fail("Condition not met in-time.");
+		fail("Condition not met in-time.");
 	}
 
 	@BeforeEach

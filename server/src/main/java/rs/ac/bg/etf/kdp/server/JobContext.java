@@ -1,12 +1,12 @@
 package rs.ac.bg.etf.kdp.server;
 
-import java.net.Socket;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobStatus;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
+
+import java.net.Socket;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Everything the server holds for a single job: its {@link TupleSpace},
@@ -19,37 +19,37 @@ import rs.ac.bg.etf.kdp.common.WorkstationInfo;
  */
 public final class JobContext {
 
-    private final JobId jobId;
-    private final TupleSpace tupleSpace = new TupleSpace();
-    private final Set<Socket> connections = ConcurrentHashMap.newKeySet();
-    private final Set<WorkstationInfo> assignedWorkstations = ConcurrentHashMap.newKeySet();
-    private volatile JobStatus status = JobStatus.READY;
+	private final JobId jobId;
+	private final TupleSpace tupleSpace = new TupleSpace();
+	private final Set<Socket> connections = ConcurrentHashMap.newKeySet();
+	private final Set<WorkstationInfo> assignedWorkstations = ConcurrentHashMap.newKeySet();
+	private volatile JobStatus status = JobStatus.READY;
 
-    public JobContext(JobId jobId) {
-        this.jobId = jobId;
-    }
+	public JobContext(JobId jobId) {
+		this.jobId = jobId;
+	}
 
-    public JobId jobId() {
-        return jobId;
-    }
+	public JobId jobId() {
+		return jobId;
+	}
 
-    public TupleSpace tupleSpace() {
-        return tupleSpace;
-    }
+	public TupleSpace tupleSpace() {
+		return tupleSpace;
+	}
 
-    public Set<Socket> connections() {
-        return connections;
-    }
+	public Set<Socket> connections() {
+		return connections;
+	}
 
-    public Set<WorkstationInfo> assignedWorkstations() {
-        return assignedWorkstations;
-    }
+	public Set<WorkstationInfo> assignedWorkstations() {
+		return assignedWorkstations;
+	}
 
-    public JobStatus status() {
-        return status;
-    }
+	public JobStatus status() {
+		return Enum.valueOf(JobStatus.class, status.toString()); //TODO check me
+	}
 
-    public void setStatus(JobStatus status) {
-        this.status = status;
-    }
+	public void setStatus(JobStatus status) {
+		this.status = status;
+	}
 }

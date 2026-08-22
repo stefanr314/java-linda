@@ -2,25 +2,35 @@ package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
-import java.net.Socket;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class WorkstationContext {
 	private final WorkstationInfo info;
-	private final Socket socket;
+	private final Closeable socket;
 	private final ObjectOutputStream out;
 
 	private final Object writeLock = new Object();  // keeping it private so callers can't acquire lock
 
-	private volatile long reportedNanoTime;
-	private volatile long roundTripTime;
+	private final AtomicInteger availableSlots;
 
-	public WorkstationContext(WorkstationInfo info, Socket socket, ObjectOutputStream out) {
+	// NOTE: these two fields are not required to be atomically manipulated since only one thread (ws handler) will
+	// write to them - just a good guarantee if number of writers change in future. Volatile long will do the same
+	private final AtomicLong reportedNanoTime = new AtomicLong(System.nanoTime());
+	private final AtomicLong roundTripTime = new AtomicLong(0L);
+
+	public WorkstationContext(WorkstationInfo info, Closeable socket, ObjectOutputStream out) {
+		Objects.requireNonNull(info);
+
 		this.info = info;
 		this.socket = socket;
 		this.out = out;
-		this.reportedNanoTime = System.nanoTime();
+
+		this.availableSlots = new AtomicInteger(info.parallelJobCapacity());
 	}
 
 	/**
@@ -52,6 +62,23 @@ public final class WorkstationContext {
 		}
 	}
 
+
+	public boolean tryAcquireSlot() {
+		// atomically try to decrease value if available slots > 0
+
+		int previous = availableSlots.getAndUpdate(free -> free > 0 ? free - 1 : free);
+		return previous > 0;
+	}
+
+	// NOTE: needed upon receiving job finished, job aborted, job failed...
+	public void releaseSlot() {
+		availableSlots.getAndUpdate(value -> Math.min(value + 1, this.info.parallelJobCapacity()));
+	}
+
+	public int availableSlots() {
+		return this.availableSlots.get();
+	}
+
 	public WorkstationInfo workstationInfo() {
 		return info;  // direct reference fine since its record class
 	}
@@ -66,20 +93,20 @@ public final class WorkstationContext {
 	}
 
 	public boolean staleTimeoutElapsed(long timeoutNanos) {
-		return System.nanoTime() - this.reportedNanoTime > timeoutNanos;
+		return System.nanoTime() - this.reportedNanoTime.get() > timeoutNanos;
 	}
-
 	// NOTE: this method is package private so the heartbeat mechanism must live in the same package as the
 	// workstation context; letting this method be public might be too dangerous.
+
 	void reportAt(long nanoTime) {
-		this.reportedNanoTime = nanoTime;
+		this.reportedNanoTime.set(nanoTime);
 	}
 
 	public void recordRTT(long roundTripTime) {
-		this.roundTripTime = roundTripTime;
+		this.roundTripTime.set(roundTripTime);
 	}
 
 	public long roundTripTime() {
-		return roundTripTime;
+		return roundTripTime.get();
 	}
 }

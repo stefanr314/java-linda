@@ -6,6 +6,7 @@ import rs.ac.bg.etf.kdp.common.protocol.*;
 import java.io.*;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -27,6 +28,8 @@ public final class WorkstationMain implements AutoCloseable {
 
 	private final static Logger LOGGER = Logger.getLogger(WorkstationMain.class.getSimpleName());
 
+	private final static long INITIAL_SO_TIMEOUT = TimeUnit.SECONDS.toMillis(60);
+
 	private final String hostname;
 
 	private final Socket socket;
@@ -41,12 +44,14 @@ public final class WorkstationMain implements AutoCloseable {
 
 	public WorkstationMain(String serverHostname, int serverPort, int capacity) throws IOException {
 		this.socket = new Socket(serverHostname, serverPort);
+		this.socket.setSoTimeout((int) INITIAL_SO_TIMEOUT);
+		
 		this.parallelismCapacity = capacity;
 
 		this.workers = Executors.newFixedThreadPool(parallelismCapacity);
 		this.os = System.getProperty("os.name");
 		this.javaVersion = getJavaVersionFromRuntime();
-		this.hostname = "WS - " + UUID.randomUUID().getMostSignificantBits();
+		this.hostname = "ws-" + UUID.randomUUID().toString().substring(0, 16);
 
 		this.out = new ObjectOutputStream(socket.getOutputStream());
 	}
@@ -67,6 +72,10 @@ public final class WorkstationMain implements AutoCloseable {
 		try (WorkstationMain workstation = new WorkstationMain(serverHostname, serverPort, capacity)) {
 			LOGGER.info(workstation.workstationInfo().toString());
 
+			// required to destroy all processes upon closing of the parent process
+//			Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+//				runningJobs.values().forEach(Process::destroyForcibly);
+//			}));
 			workstation.run();
 		} catch (IOException e) {
 			System.err.println("IO exception with message: " + e.getMessage());
@@ -117,9 +126,12 @@ public final class WorkstationMain implements AutoCloseable {
 			try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 				send(new WorkstationHello(workstationInfo()));
 
+				// covered by initial so timeout i.e. wait a minute until serer responds
 				Object ack = in.readObject();
 
 				if (ack instanceof Failure failure) throw new IOException("Handshake refused: " + failure.message());
+				if (ack instanceof Registered registered)
+					socket.setSoTimeout(registered.heartbeatPolicy().socketTimeoutMillis());
 
 				// the rest of communication
 				waitForWork(in);
@@ -128,6 +140,10 @@ public final class WorkstationMain implements AutoCloseable {
 		} catch (EOFException | SocketException e) {
 			// server was closed
 			LOGGER.log(Level.INFO, "Server closed its socket or an end of communication reached.");
+		} catch (SocketTimeoutException timeout) {
+			// this is the part for reconnecting with the server if server available
+			LOGGER.log(Level.INFO, "Server unreachable. Try reconnecting. This implementation just closes the socket " +
+					"and terminates");
 		} catch (IOException | ClassNotFoundException e) {
 			LOGGER.log(Level.SEVERE, "Error upon trying to communicate with the server: " + e.getMessage(), e);
 		}

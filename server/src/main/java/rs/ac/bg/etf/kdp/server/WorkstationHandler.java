@@ -1,13 +1,15 @@
 package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
-import rs.ac.bg.etf.kdp.common.protocol.*;
+import rs.ac.bg.etf.kdp.common.protocol.Bye;
+import rs.ac.bg.etf.kdp.common.protocol.Failure;
+import rs.ac.bg.etf.kdp.common.protocol.Ping;
+import rs.ac.bg.etf.kdp.common.protocol.Pong;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutputStream;
-import java.net.Socket;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -23,44 +25,35 @@ public class WorkstationHandler implements ConnectionHandler {
 
 	private static final Logger LOGGER = Logger.getLogger(WorkstationHandler.class.getName());
 
-	private final Socket socket;
+	private final Closeable socket;
 	private final ObjectInput in;
 	private final ObjectOutputStream out;
-	private final WorkstationRegistry registry;
+	private final WorkstationRegistrator registrator;
 	private final WorkstationInfo info;
 
-	public WorkstationHandler(Socket socket, ObjectInput in, ObjectOutputStream out, WorkstationRegistry registry, WorkstationInfo info) {
+	public WorkstationHandler(Closeable socket, ObjectInput in, ObjectOutputStream out,
+							  WorkstationRegistrator registrator,
+							  WorkstationInfo info) {
 		this.socket = socket;
 		this.in = in;
 		this.out = out;
-		this.registry = registry;
+		this.registrator = registrator;
 		this.info = info;
 	}
 
 	@Override
 	public void run() throws IOException, ClassNotFoundException {
-		// create context
-		WorkstationContext context = new WorkstationContext(info, socket, out);
-
-		// register the workstation
-		registry.register(context);
-
-		LOGGER.info(() -> "Registered workstation " + context);
-		// send out confirmation message
-		context.send(new Reply("Successful registration for workstation: " + context.hostName()));
+		// create context - create context prior to check whether the station has already registered context
+		WorkstationContext context = registrator.register(info, socket, out);
 
 		// run the loop which serves the communication with the workstation
 		try {
 			loop(context);
 		} finally {
 			// once the socket is closed (no matter the reason) this is the only place to deregister the workstation
-			// from registry; otherwise dead workstation can be picked as candidate for processing jobs
-			if (!registry.unregister(context)) {
-				LOGGER.log(Level.SEVERE, "Workstation was not removed from registry space. Dead instance lurking " +
-						"around.");
-			} else {
-				LOGGER.info(() -> "Workstation unregistered " + context);
-			}
+			// from registrator; otherwise dead workstation can be picked as candidate for processing jobs
+
+			registrator.unregister(context);
 		}
 	}
 
@@ -69,10 +62,13 @@ public class WorkstationHandler implements ConnectionHandler {
 			Object message = in.readObject();
 
 			if (message instanceof Pong pong) {
-				context.reportAt(System.nanoTime());
-				context.recordRTT(System.nanoTime() - pong.returnNanoTime());
+				long now = System.nanoTime();
+				context.reportAt(now);
+				context.recordRTT(now - pong.returnNanoTime());
 			} else if (message instanceof Ping ping) {
 				// workstation should not ping server but that type of communication is not harmful tbh...
+				context.reportAt(System.nanoTime());
+				context.send(new Pong(ping.timeNanos()));
 			} else if (message instanceof Bye ignored) {
 				return;
 			} else {

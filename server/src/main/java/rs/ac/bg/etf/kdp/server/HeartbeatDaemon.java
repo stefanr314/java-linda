@@ -1,5 +1,6 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.HeartbeatPolicy;
 import rs.ac.bg.etf.kdp.common.protocol.Ping;
 
 import java.io.IOException;
@@ -13,6 +14,10 @@ import java.util.logging.Logger;
  * Class that represents heartbeat daemon thread responsible for pinging the workstations on every threshold interval
  * reached (in project specification on every x seconds as declared). This thread will be aid with the use of
  * scheduled executor service.
+ * <p>
+ * Responsibility of this mechanism is to detect stale/dead connections and close them to prevent server resources
+ * from being exhausted.
+ * </p>
  */
 public class HeartbeatDaemon implements AutoCloseable {
 
@@ -29,14 +34,14 @@ public class HeartbeatDaemon implements AutoCloseable {
 	});
 	private final Runnable runner = this::sweeper;
 
-	public HeartbeatDaemon(long intervalMillis, long timeoutNanos, WorkstationRegistry workstationRegistry) {
-		this.intervalMillis = intervalMillis;
-		this.timeoutNanos = timeoutNanos;
+	public HeartbeatDaemon(HeartbeatPolicy policy, WorkstationRegistry workstationRegistry) {
+		this.intervalMillis = policy.intervalMillis();
+		this.timeoutNanos = policy.timeoutNanos();
 		this.workstationRegistry = workstationRegistry;
 	}
 
 	public void start() {
-		LOGGER.info("Heartbeat mechanism started");
+		LOGGER.fine("Heartbeat mechanism started");
 		scheduler.scheduleWithFixedDelay(runner, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
 	}
 

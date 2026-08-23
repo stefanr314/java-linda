@@ -1,5 +1,6 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.HeartbeatPolicy;
 import rs.ac.bg.etf.kdp.common.protocol.Failure;
 import rs.ac.bg.etf.kdp.common.protocol.Hello;
 
@@ -40,8 +41,7 @@ public final class ServerMain implements AutoCloseable {
 
 	private final HeartbeatDaemon heartbeat;
 
-	private final ConnectionHandlerFactory connectionHandlerFactory =
-			new ConnectionHandlerFactory(workstationRegistry, jobRegistry);
+	private final ConnectionHandlerFactory connectionHandlerFactory;
 
 	private final Map<Socket, Boolean> connections = new ConcurrentHashMap<>();
 
@@ -56,7 +56,13 @@ public final class ServerMain implements AutoCloseable {
 
 		this.serverSocket = new ServerSocket(port);
 		this.running = true;
-		this.heartbeat = new HeartbeatDaemon(intervalMillis, TimeUnit.MILLISECONDS.toNanos(timeoutMillis), workstationRegistry);
+
+		HeartbeatPolicy heartbeatPolicy = new HeartbeatPolicy(intervalMillis, timeoutMillis);
+
+		WorkstationRegistrator wsRegistrator = new WorkstationRegistrator(workstationRegistry, heartbeatPolicy);
+		this.heartbeat = new HeartbeatDaemon(heartbeatPolicy, workstationRegistry);
+
+		this.connectionHandlerFactory = new ConnectionHandlerFactory(wsRegistrator, jobRegistry);
 	}
 
 	public static void main(String[] args) {

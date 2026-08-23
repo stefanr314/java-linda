@@ -22,11 +22,11 @@ import java.net.Socket;
  * @author stefanr
  */
 public class ConnectionHandlerFactory {
-	private final WorkstationRegistry workstationRegistry;
+	private final WorkstationRegistrator workstationRegistrator;
 	private final JobRegistry jobRegistry;
 
-	public ConnectionHandlerFactory(WorkstationRegistry workstationRegistry, JobRegistry jobRegistry) {
-		this.workstationRegistry = workstationRegistry;
+	public ConnectionHandlerFactory(WorkstationRegistrator workstationRegistrator, JobRegistry jobRegistry) {
+		this.workstationRegistrator = workstationRegistrator;
 		this.jobRegistry = jobRegistry;
 	}
 
@@ -44,7 +44,7 @@ public class ConnectionHandlerFactory {
 		ConnectionHandler handler = null;
 
 		if (hello instanceof WorkstationHello wsHello) {
-			handler = new WorkstationHandler(socket, in, out, workstationRegistry, wsHello.wsInfo());
+			handler = new WorkstationHandler(socket, in, out, workstationRegistrator, wsHello.wsInfo());
 		} else if (hello instanceof ClientHello clHello) {
 			System.out.println("User connected " + clHello.user());
 		} else if (hello instanceof LindaHello lindaHello) {

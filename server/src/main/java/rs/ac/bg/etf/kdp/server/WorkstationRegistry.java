@@ -16,11 +16,17 @@ public final class WorkstationRegistry {
 
 	/**
 	 * Registers a workstation as available for scheduling.
+	 * <p>
+	 * It's mandatory to use the return type of the {@link Map#put} method to determine whether the station had prior
+	 * context before registering i.e. if the station reconnected before the HB mechanism operated the closing
+	 * routine of ghosted (socket) connection. That in turn triggered the handler to unregister the station. This can
+	 * lead to unregistering the freshly connected stations.
+	 * </p>
 	 *
 	 * @param context required info about the workstation.
 	 */
-	public void register(WorkstationContext context) {
-		workstations.put(context.workstationInfo().hostName(), context);
+	public Optional<WorkstationContext> register(WorkstationContext context) {
+		return Optional.ofNullable(workstations.put(context.workstationInfo().hostName(), context));
 	}
 
 	/**

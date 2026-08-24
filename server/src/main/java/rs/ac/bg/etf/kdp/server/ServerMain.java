@@ -118,6 +118,7 @@ public final class ServerMain implements AutoCloseable {
 			 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
 			out.flush();
 			try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+				CloseableMessageSink messageSink = new ObjectOutputCloseableMessageSink(out, socket);
 				Object received = in.readObject();
 
 				if (!(received instanceof Hello hello)) {
@@ -128,7 +129,7 @@ public final class ServerMain implements AutoCloseable {
 					return;
 				}
 
-				connectionHandlerFactory.getHandler(hello, socket, out, in).run();
+				connectionHandlerFactory.getHandler(hello, messageSink, in).run();
 			}
 		} catch (EOFException | SocketException e) {
 			// normal behaviour upon receiving sentinel value from other ended communication side;

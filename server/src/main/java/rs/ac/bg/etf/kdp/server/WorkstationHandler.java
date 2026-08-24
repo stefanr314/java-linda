@@ -6,11 +6,8 @@ import rs.ac.bg.etf.kdp.common.protocol.Failure;
 import rs.ac.bg.etf.kdp.common.protocol.Ping;
 import rs.ac.bg.etf.kdp.common.protocol.Pong;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.io.ObjectInput;
-import java.io.ObjectOutputStream;
-import java.util.logging.Logger;
 
 /**
  * Handler dedicated for working with workstations. Handle all the communication, registering the stations. All the
@@ -23,20 +20,16 @@ import java.util.logging.Logger;
  */
 public class WorkstationHandler implements ConnectionHandler {
 
-	private static final Logger LOGGER = Logger.getLogger(WorkstationHandler.class.getName());
-
-	private final Closeable socket;
+	private final CloseableMessageSink messageSink;
 	private final ObjectInput in;
-	private final ObjectOutputStream out;
 	private final WorkstationRegistrator registrator;
 	private final WorkstationInfo info;
 
-	public WorkstationHandler(Closeable socket, ObjectInput in, ObjectOutputStream out,
+	public WorkstationHandler(CloseableMessageSink messageSink, ObjectInput in,
 							  WorkstationRegistrator registrator,
 							  WorkstationInfo info) {
-		this.socket = socket;
+		this.messageSink = messageSink;
 		this.in = in;
-		this.out = out;
 		this.registrator = registrator;
 		this.info = info;
 	}
@@ -44,7 +37,7 @@ public class WorkstationHandler implements ConnectionHandler {
 	@Override
 	public void run() throws IOException, ClassNotFoundException {
 		// create context - create context prior to check whether the station has already registered context
-		WorkstationContext context = registrator.register(info, socket, out);
+		WorkstationContext context = registrator.register(info, messageSink);
 
 		// run the loop which serves the communication with the workstation
 		try {

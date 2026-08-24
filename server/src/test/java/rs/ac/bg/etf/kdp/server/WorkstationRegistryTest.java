@@ -5,9 +5,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,16 +21,14 @@ class WorkstationRegistryTest {
 		registry = new WorkstationRegistry();
 	}
 
-	private WorkstationContext context(String host, int capacity) throws IOException {
+	private WorkstationContext context(String host, int capacity) {
 		return new WorkstationContext(
 				new WorkstationInfo(host, "TestOS", "17", capacity),
-				() -> {
-				},
-				new ObjectOutputStream(OutputStream.nullOutputStream()));
+				new WorkstationContextTest.FakeMessageSink());
 	}
 
 	@Test
-	void freeStationIsFoundWithItsSlotAlreadyClaimed() throws IOException {
+	void freeStationIsFoundWithItsSlotAlreadyClaimed() {
 		WorkstationContext station = context("ws-1", 1);
 		registry.register(station);
 
@@ -42,7 +37,7 @@ class WorkstationRegistryTest {
 	}
 
 	@Test
-	void slotsAreExhaustedAcrossEveryRegisteredStation() throws IOException {
+	void slotsAreExhaustedAcrossEveryRegisteredStation() {
 		registry.register(context("ws-1", 2));
 		registry.register(context("ws-2", 3));
 
@@ -53,7 +48,7 @@ class WorkstationRegistryTest {
 	}
 
 	@Test
-	void releasedSlotBecomesAvailableAgain() throws IOException {
+	void releasedSlotBecomesAvailableAgain() {
 		WorkstationContext station = context("ws-1", 1);
 		registry.register(station);
 
@@ -63,7 +58,7 @@ class WorkstationRegistryTest {
 	}
 
 	@Test
-	void unregisterDoesNotEvictAReplacementRegisteredUnderTheSameName() throws IOException {
+	void unregisterDoesNotEvictAReplacementRegisteredUnderTheSameName() {
 		WorkstationContext stale = context("ws-1", 1);
 		WorkstationContext fresh = context("ws-1", 1);
 		registry.register(stale);

@@ -2,19 +2,14 @@ package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 
-import java.io.Closeable;
 import java.io.IOException;
-import java.io.ObjectOutputStream;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class WorkstationContext {
 	private final WorkstationInfo info;
-	private final Closeable socket;
-	private final ObjectOutputStream out;
-
-	private final Object writeLock = new Object();  // keeping it private so callers can't acquire lock
+	private final CloseableMessageSink messageSink;
 
 	private final AtomicInteger availableSlots;
 
@@ -23,12 +18,9 @@ public final class WorkstationContext {
 	private final AtomicLong reportedNanoTime = new AtomicLong(System.nanoTime());
 	private final AtomicLong roundTripTime = new AtomicLong(0L);
 
-	public WorkstationContext(WorkstationInfo info, Closeable socket, ObjectOutputStream out) {
-		Objects.requireNonNull(info);
-
-		this.info = info;
-		this.socket = socket;
-		this.out = out;
+	public WorkstationContext(WorkstationInfo info, CloseableMessageSink messageSink) {
+		this.info = Objects.requireNonNull(info);
+		this.messageSink = messageSink;
 
 		this.availableSlots = new AtomicInteger(info.parallelJobCapacity());
 	}
@@ -46,20 +38,11 @@ public final class WorkstationContext {
 	 * @throws IOException regular exceptions when working with I/O streams (socket in this case).
 	 */
 	public void send(Object message) throws IOException {
-		synchronized (writeLock) {
-			out.writeObject(message);
-
-			out.reset();
-			out.flush();
-		}
+		messageSink.send(message);
 	}
 
 	public void disconnect() {
-		try {
-			socket.close();
-		} catch (IOException ignored) {
-			// ignore it
-		}
+		messageSink.close();
 	}
 
 
@@ -102,7 +85,7 @@ public final class WorkstationContext {
 		this.reportedNanoTime.set(nanoTime);
 	}
 
-	public void recordRTT(long roundTripTime) {
+	void recordRTT(long roundTripTime) {
 		this.roundTripTime.set(roundTripTime);
 	}
 

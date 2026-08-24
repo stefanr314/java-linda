@@ -4,9 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -19,13 +18,11 @@ class WorkstationContextTest {
 	private int parallelism;
 
 	@BeforeEach
-	void setupContextWithoutWritingMechanism() throws IOException {
+	void setupContextWithoutWritingMechanism() {
 		WorkstationInfo info = new WorkstationInfo("test-workstation", "my OS", "future Java 30.1", 2);
 		workstation = new WorkstationContext(
 				info,
-				() -> {
-				},
-				new ObjectOutputStream(OutputStream.nullOutputStream())
+				new FakeMessageSink()
 		);
 
 		parallelism = workstation.workstationInfo().parallelJobCapacity();
@@ -90,6 +87,21 @@ class WorkstationContextTest {
 		} catch (InterruptedException e) {
 			fail("Interrupt happened test failed.");
 			Thread.currentThread().interrupt();
+		}
+	}
+
+	static final class FakeMessageSink implements CloseableMessageSink {
+		final List<Object> sent = new ArrayList<>();
+		boolean closed = false;
+
+		@Override
+		public void send(Object message) {
+			sent.add(message);
+		}
+
+		@Override
+		public void close() {
+			closed = true;
 		}
 	}
 }

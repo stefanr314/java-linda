@@ -6,8 +6,6 @@ import rs.ac.bg.etf.kdp.common.protocol.LindaHello;
 import rs.ac.bg.etf.kdp.common.protocol.WorkstationHello;
 
 import java.io.ObjectInput;
-import java.io.ObjectOutputStream;
-import java.net.Socket;
 
 /**
  * Simple Factory for generation of connection handlers. This pattern does not resemble Factory Pattern but rather a
@@ -34,17 +32,16 @@ public class ConnectionHandlerFactory {
 	 * Method for reaching the proper handler read from introductory message. This method is synchronization free
 	 * since it enforces the stack confinement approach.
 	 *
-	 * @param hello  introductory message
-	 * @param socket socket connection to sender
-	 * @param out    stream for writing objects
-	 * @param in     stream for reading objects
+	 * @param hello       introductory message
+	 * @param messageSink writeable and closeable sink
+	 * @param in          stream for reading objects
 	 * @return handler for the rest of communication
 	 */
-	public ConnectionHandler getHandler(Hello hello, Socket socket, ObjectOutputStream out, ObjectInput in) {
+	public ConnectionHandler getHandler(Hello hello, CloseableMessageSink messageSink, ObjectInput in) {
 		ConnectionHandler handler = null;
 
 		if (hello instanceof WorkstationHello wsHello) {
-			handler = new WorkstationHandler(socket, in, out, workstationRegistrator, wsHello.wsInfo());
+			handler = new WorkstationHandler(messageSink, in, workstationRegistrator, wsHello.wsInfo());
 		} else if (hello instanceof ClientHello clHello) {
 			System.out.println("User connected " + clHello.user());
 		} else if (hello instanceof LindaHello lindaHello) {

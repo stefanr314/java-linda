@@ -13,7 +13,7 @@ import java.util.logging.Logger;
 /**
  * Class that represents heartbeat daemon thread responsible for pinging the workstations on every threshold interval
  * reached (in project specification on every x seconds as declared). This thread will be aid with the use of
- * scheduled executor service.
+ * scheduled executor service. Once closed heartbeat can not start again.
  * <p>
  * Responsibility of this mechanism is to detect stale/dead connections and close them to prevent server resources
  * from being exhausted.
@@ -88,12 +88,10 @@ public class HeartbeatDaemon implements AutoCloseable {
 		scheduler.shutdownNow();
 
 		try {
-			if (!scheduler.awaitTermination(10, TimeUnit.SECONDS)) {
+			if (!scheduler.awaitTermination(3, TimeUnit.SECONDS)) {
 				LOGGER.log(Level.WARNING, "Scheduler did not manage to close before the timeout.");
 			}
 		} catch (InterruptedException e) {
-			scheduler.shutdownNow();  // re-try if interrupted while waiting
-
 			Thread.currentThread().interrupt();
 		}
 	}

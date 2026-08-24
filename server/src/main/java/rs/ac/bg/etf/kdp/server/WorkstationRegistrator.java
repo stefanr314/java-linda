@@ -4,9 +4,7 @@ import rs.ac.bg.etf.kdp.common.HeartbeatPolicy;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 import rs.ac.bg.etf.kdp.common.protocol.Registered;
 
-import java.io.Closeable;
 import java.io.IOException;
-import java.io.ObjectOutputStream;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -57,9 +55,9 @@ public final class WorkstationRegistrator {
 	 * @throws IOException if the acknowledgement cannot be delivered, meaning the workstation was
 	 *                     already gone by the time it finished registering
 	 */
-	public WorkstationContext register(WorkstationInfo info, Closeable socket, ObjectOutputStream out)
+	public WorkstationContext register(WorkstationInfo info, CloseableMessageSink messageSink)
 			throws IOException {
-		WorkstationContext context = new WorkstationContext(info, socket, out);
+		WorkstationContext context = new WorkstationContext(info, messageSink);
 
 		registry.register(context).ifPresent(stale -> {
 			LOGGER.log(Level.INFO, "Replacing a stale registration for {0}", stale.hostName());

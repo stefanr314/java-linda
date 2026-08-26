@@ -46,10 +46,10 @@ public final class WorkstationRegistry {
 
 	/**
 	 * Method for trying to gain free stations (i.e. slot of station). Method does not enforce blocking of any
-	 * nature, just returns false if there are not any free stations (in the moment of checking). Otherwise, a
+	 * nature, just returns empty optional if there are not any free stations (in the moment of checking). Otherwise, a
 	 * context of free station is returned.
 	 * <p>
-	 * Iteration on concurrent hashmap if thread safe since no exception will be thrown, and even the concurrent
+	 * Iteration on concurrent hashmap is thread safe since no exception will be thrown, and even the concurrent
 	 * modifications might be present in the moment of iterating (by specification this is not guaranteed).
 	 * However, iterating on this map does not guarantee that no stale values will be present, which in turn
 	 * returns the slot for unreachable i.e. stale station. This is expected behaviour. Responsibility is
@@ -63,7 +63,7 @@ public final class WorkstationRegistry {
 			if (workstation.tryAcquireSlot())
 				return Optional.of(workstation);
 		}
-		return Optional.empty(); //todo
+		return Optional.empty();
 	}
 
 	public Collection<WorkstationContext> workstations() {

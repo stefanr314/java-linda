@@ -1,29 +1,69 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.protocol.Failure;
+import rs.ac.bg.etf.kdp.common.protocol.JobSubmitCommand;
+
 import java.io.IOException;
+import java.io.ObjectInput;
 
 public class ClientHandler implements ConnectionHandler {
+
+	private final CloseableMessageSink messageSink;  // FIXME USE THE CLIENT CONTEXT INSTEAD
+	private final ObjectInput in;
+	private final JobRegistry jobRegistry;
+	private final String clientConnected;
+	private final Scheduler scheduler;
+
+	public ClientHandler(CloseableMessageSink messageSink,
+						 ObjectInput in,
+						 JobRegistry jobRegistry,
+						 String clientConnected,
+						 Scheduler scheduler) {
+
+		this.messageSink = messageSink;
+		this.in = in;
+		this.jobRegistry = jobRegistry;
+		this.clientConnected = clientConnected;
+		this.scheduler = scheduler;
+	}
+
 	@Override
 	public void run() throws IOException, ClassNotFoundException {
-		throw new UnsupportedOperationException("To be implemented");
 
+		// TODO: Create job context and user context
+
+		// TODO: dont forget about the job logs
+
+		try {
+			loop();
+		} catch (IOException e) {
+			// try catching the exception that are regular end time exception (server does handle this in some measure)
+			throw new RuntimeException(e);
+		} finally {
+			messageSink.close();  // close the user context
+		}
 		// when I take a better a look all of this can be done in a loop right away - just check the request type
 
-		// request types - job generation, job check, job abort, iF JOB IS FINISHED but CLIENT IS NOT REACHABLE WRITE
-		// IT TO SOME STRUCTURE - so then check whether that client has a job pending for him and return it straight
-		// away
+		// request types - job submit, job check, job abort, iF JOB IS FINISHED but CLIENT IS NOT REACHABLE WRITE
+		// IT TO SOME STRUCTURE ??; it will be in Job Registry with status DONE
 
 		// check for data - should be jar data (read in chunks) WHAT TO DO IF NOT - send(new Failure) return;
 		// PERFORMED ON CLIENT OUT CHANNEL NOT THE WORKSTATION ONE - THIS SHOULD ALSO BE SEPARATED IN SOME CLIENT
-		// CONTEXT
+		// CONTEXT ???; d fak this means first of all data does not need be jar client can make different requests
+		// does not need to perform posting the jar data immediately
 
 		// SO THIS HANDLER HAS TO FIRSTLY CHECK WHETHER THE CLIENT HAS JOB IN CLIENT CONTEXT - CLIENT CAN BE
 		// DESCRIBED WITH THE HELP OF SOCKET.port (this is the limitation since there is no registration of clients
-		// to the app)
+		// to the app) ??; no it does not it's fine if there is no job in job registry d fak is client context just
+		// job id is required to be somehow saved on client side write it to some structure so that client can query
+		// it, or not event this is obligatory client just needs to keep the program running but can explicitly close
+		// the socket connection
 
-		// job id generation - this should be received tbh
+		// job id generation - this should be received tbh ?? yes the client has to have the job id generated and saved
 
-		// reach for the scheduler - i.e. registry
+		// reach for the scheduler - i.e. registry ?? what registry, I need the scheduler that will use the
+		// workstation reg to reach the context and send the job so scheduler is bridge between job registry and
+		// workstations
 
 		// await for the response
 
@@ -31,11 +71,46 @@ public class ClientHandler implements ConnectionHandler {
 
 		// wait to see the job in job registry - this is the responsibility of workstation handler to write it to the
 		// registry if everything is fine - either block until i see ws handler has written da ws accepted the job or
-		// attach an listener
+		// attach a listener ??; actually not quite the job should be in registry straight away just the status changes
 
-		// if not present just return the message that station is not available right now
+		// if not present just return the message that station is not available right now ??; not really rather keep
+		// the job in queue for some time perhaps a station will become available eventually (this keep requested job
+		// time can be manipulated)
 
-		// if this line reached just run the loop listen for clients requests - check job status, perhaps he
 
+	}
+
+	private void loop() throws IOException, ClassNotFoundException {
+		for (; ; ) {
+			Object received = in.readObject();
+
+			if (received instanceof JobSubmitCommand jobSubmit) {
+				// do the job submit - TODO: put the job submit command wrapper with job ID and job spec
+
+				//TODO: firstly add it to the job registry
+				jobRegistry.register(jobSubmit.jobId());  // perhaps I can make this part of delegator
+
+				// TODO: call the delegator/scheduler in help
+				scheduler.scheduleJob(jobSubmit);
+//			} else if (received instanceof CheckJobResultCommand jobResult) {
+//				// check the job result if status done
+//			} else if (received instanceof CheckJobStatusCommand checkJobStatusCommand) {
+//				// check job status
+//			} else if (received instanceof AbortJobCommand checkAbortJobCommand) {
+//				// abort the job
+//			} else if (received instanceof JobStoppedResponse jobStoppedResponse) {
+//				// respond to the job that was stopped by dead workstation
+
+				// client either aborted or delegated the job to next free station
+				// IF ABORTED CALL THE CLASS FOR ABORTION
+
+				// IF DELEGATED CALL SCHEDULER TO DELEGATE ONCE AGAIN (i hope so)
+//			} else if (received instanceof Bye bye) {
+//				// client closed the connection everything should keep running anyway
+//				return;
+			} else {
+				messageSink.send(new Failure("Unknown message received: " + received.getClass()));
+			}
+		}
 	}
 }

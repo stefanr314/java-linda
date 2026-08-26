@@ -20,12 +20,16 @@ import java.io.ObjectInput;
  * @author stefanr
  */
 public class ConnectionHandlerFactory {
+
 	private final WorkstationRegistrator workstationRegistrator;
 	private final JobRegistry jobRegistry;
+	private final Scheduler scheduler;
 
-	public ConnectionHandlerFactory(WorkstationRegistrator workstationRegistrator, JobRegistry jobRegistry) {
+	public ConnectionHandlerFactory(WorkstationRegistrator workstationRegistrator, JobRegistry jobRegistry,
+									Scheduler scheduler) {
 		this.workstationRegistrator = workstationRegistrator;
 		this.jobRegistry = jobRegistry;
+		this.scheduler = scheduler;
 	}
 
 	/**
@@ -43,7 +47,7 @@ public class ConnectionHandlerFactory {
 		if (hello instanceof WorkstationHello wsHello) {
 			handler = new WorkstationHandler(messageSink, in, workstationRegistrator, wsHello.wsInfo());
 		} else if (hello instanceof ClientHello clHello) {
-			System.out.println("User connected " + clHello.user());
+			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler);
 		} else if (hello instanceof LindaHello lindaHello) {
 			System.out.println("Linda client connected " + lindaHello.jobId());
 		}

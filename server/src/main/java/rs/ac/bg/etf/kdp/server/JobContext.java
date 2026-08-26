@@ -24,6 +24,11 @@ public final class JobContext {
 	private final Set<Socket> connections = ConcurrentHashMap.newKeySet();
 	private final Set<WorkstationInfo> assignedWorkstations = ConcurrentHashMap.newKeySet();
 	private volatile JobStatus status = JobStatus.READY;
+	private volatile boolean stationActive = true;  // HB will affect this value if station is not active anymore
+
+	//TODO timestamp of job
+
+	// TODO: perhaps leave here the reference to the User context to write to it's channel
 
 	public JobContext(JobId jobId) {
 		this.jobId = jobId;
@@ -38,11 +43,11 @@ public final class JobContext {
 	}
 
 	public Set<Socket> connections() {
-		return connections;
+		return Set.copyOf(connections);
 	}
 
 	public Set<WorkstationInfo> assignedWorkstations() {
-		return assignedWorkstations;
+		return Set.copyOf(assignedWorkstations);
 	}
 
 	public JobStatus status() {

@@ -62,6 +62,10 @@ public class WorkstationHandler implements ConnectionHandler {
 				// workstation should not ping server but that type of communication is not harmful tbh...
 				context.reportAt(System.nanoTime());
 				context.send(new Pong(ping.timeNanos()));
+//			} else if (message instanceof JobStarted jobStarted) {
+//				// workstation has accepted and started the job
+//
+//				// CHANGE THE STATUS TO RUNNING - this is the end of chain of job submition
 			} else if (message instanceof Bye ignored) {
 				return;
 			} else {

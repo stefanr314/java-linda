@@ -66,18 +66,30 @@ public class HeartbeatDaemon implements AutoCloseable {
 			// check if ws is stale
 			if (workstation.staleTimeoutElapsed(timeoutNanos)) {
 				LOGGER.log(Level.WARNING,
-						"Workstation %s did not respond before the timeout.".formatted(workstation.hostName()));
-				//TODO: client must determine the future of job
+						("Workstation %s did not respond before the timeout. " +
+								"Sweeping will be performed.").formatted(workstation.hostName()));
+				//TODO: client must determine the future of job - AT THIS POINT WS CAN NOT RECONNECT
+
+				// check whether station had any jobs on it by reaching the job registry
+
+				// reach the user context to write him a message - if connection is closed an exception will
+				// eventually be thrown (perhaps the first message succeeds) and should be caught with the Socket
+				// Exception (will I receive RST here does not really matter); the return message should be caught by
+				// client handle - timeout on this value perhaps???
+
+				// IT will be handy if I use PENDING STATE AT THIS TIME since the user makes the decision
+
+				// let the HB catch the Socket Exception and call the job registry to abort the job
 				workstation.disconnect();
 				continue;
 			}
 
-			// send messages
+			// send probes
 			try {
 				workstation.send(new Ping(System.nanoTime()));
 			} catch (IOException e) {
-				LOGGER.log(Level.WARNING, "Unable to send message to the workstation: " + workstation.hostName() + "." +
-						" Workstation will be disconnected.");
+				LOGGER.log(Level.WARNING, "Unable to send message to the workstation: " + workstation.hostName() +
+						". Workstation will be disconnected.");
 				workstation.disconnect();
 			}
 		}

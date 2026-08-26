@@ -67,6 +67,8 @@ public final class WorkstationRegistrator {
 		context.send(new Registered(context.hostName(), heartbeatPolicy));
 		LOGGER.log(Level.INFO, "Registered workstation {0}", context);
 
+		// TODO: delegator.reportStation(stationId);
+
 		return context;
 	}
 

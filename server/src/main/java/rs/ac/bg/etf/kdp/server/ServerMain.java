@@ -39,6 +39,7 @@ public final class ServerMain implements AutoCloseable {
 
 	private final JobRegistry jobRegistry = new JobRegistry();
 
+	private final Scheduler scheduler = new Scheduler(jobRegistry, workstationRegistry);
 	private final HeartbeatDaemon heartbeat;
 
 	private final ConnectionHandlerFactory connectionHandlerFactory;
@@ -62,7 +63,7 @@ public final class ServerMain implements AutoCloseable {
 		WorkstationRegistrator wsRegistrator = new WorkstationRegistrator(workstationRegistry, heartbeatPolicy);
 		this.heartbeat = new HeartbeatDaemon(heartbeatPolicy, workstationRegistry);
 
-		this.connectionHandlerFactory = new ConnectionHandlerFactory(wsRegistrator, jobRegistry);
+		this.connectionHandlerFactory = new ConnectionHandlerFactory(wsRegistrator, jobRegistry, scheduler);
 	}
 
 	public static void main(String[] args) {

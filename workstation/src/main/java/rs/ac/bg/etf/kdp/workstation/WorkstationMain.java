@@ -45,7 +45,7 @@ public final class WorkstationMain implements AutoCloseable {
 	public WorkstationMain(String serverHostname, int serverPort, int capacity) throws IOException {
 		this.socket = new Socket(serverHostname, serverPort);
 		this.socket.setSoTimeout((int) INITIAL_SO_TIMEOUT);
-		
+
 		this.parallelismCapacity = capacity;
 
 		this.workers = Executors.newFixedThreadPool(parallelismCapacity);
@@ -102,7 +102,7 @@ public final class WorkstationMain implements AutoCloseable {
 					mappedArgs.put(arg, args[++i]);  // skip it for next iteration
 				else
 					mappedArgs.put(arg, null);
-			}
+			} //handle improper values
 		}
 
 		return mappedArgs;
@@ -163,8 +163,24 @@ public final class WorkstationMain implements AutoCloseable {
 				send(new Pong(ping.timeNanos()));
 			} else if (received instanceof Pong pong) {
 				// server is alive
+			} else if (received instanceof JobSubmitCommand jobSubmit) {
+				// check whether slots are truly free
+
+				// NOTE: this main must be supported and expanded
+				// firstly i need a running jobs list
+
+				// than I can check the size of list and compare it with my threads parallelism
+
+				// forward it to jobStarter class if everything fine - this class can make it return boolean
+
+				//TODO: save a max number of tries per jobId to prevent jobs that can not be completed to run
+				// multiple times
+
+				// send the confirmation message if job starter started the job
 			} else if (received instanceof Bye ignored) {
 				return; // communication ended
+			} else {
+				send(new Failure("Message not recognized: " + received.getClass()));
 			}
 		}
 	}

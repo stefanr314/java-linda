@@ -9,6 +9,10 @@ import java.io.ObjectInputStream;
  * provided as argument to EVAL command of Java distributed linda. Since communication between two distinct processes
  * is required a temporal file is created by process creator and serves as input source for bootstrap process.
  *
+ * <p>
+ * It's required to actually shut down all the child process upon death of parent ones.
+ * </p>
+ *
  * @author stefanr
  */
 public class EvalBootstrap {
@@ -16,6 +20,9 @@ public class EvalBootstrap {
 		if (args == null || args[0] == null) {
 			throw new IllegalArgumentException();
 		}
+
+		// TODO
+		// getting rid of zombies polluting the tuple space; halting since no user shutdown hooks are of any interest
 
 		try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(args[0]));) {
 			((Runnable) in.readObject()).run();

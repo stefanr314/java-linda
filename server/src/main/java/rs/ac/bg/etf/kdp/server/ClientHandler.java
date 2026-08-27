@@ -30,17 +30,15 @@ public class ClientHandler implements ConnectionHandler {
 	@Override
 	public void run() throws IOException, ClassNotFoundException {
 
-		// TODO: Create job context and user context
-
-		// TODO: dont forget about the job logs
+		UserContext userContext = new UserContext(messageSink, clientConnected);
 
 		try {
-			loop();
+			loop(userContext);
 		} catch (IOException e) {
 			// try catching the exception that are regular end time exception (server does handle this in some measure)
 			throw new RuntimeException(e);
 		} finally {
-			messageSink.close();  // close the user context
+			userContext.disconnect();  // close the user context
 		}
 		// when I take a better a look all of this can be done in a loop right away - just check the request type
 
@@ -80,18 +78,19 @@ public class ClientHandler implements ConnectionHandler {
 
 	}
 
-	private void loop() throws IOException, ClassNotFoundException {
+	private void loop(UserContext userContext) throws IOException, ClassNotFoundException {
 		for (; ; ) {
 			Object received = in.readObject();
 
 			if (received instanceof JobSubmitCommand jobSubmit) {
-				// do the job submit - TODO: put the job submit command wrapper with job ID and job spec
 
 				//TODO: firstly add it to the job registry
-				jobRegistry.register(jobSubmit.jobId());  // perhaps I can make this part of delegator
+				jobRegistry.register(jobSubmit.jobId(), userContext, jobSubmit.jobSpec());
+
+				// TODO: dont forget about the job logs
 
 				// TODO: call the delegator/scheduler in help
-				scheduler.scheduleJob(jobSubmit);
+				scheduler.scheduleReadyJobs();
 //			} else if (received instanceof CheckJobResultCommand jobResult) {
 //				// check the job result if status done
 //			} else if (received instanceof CheckJobStatusCommand checkJobStatusCommand) {

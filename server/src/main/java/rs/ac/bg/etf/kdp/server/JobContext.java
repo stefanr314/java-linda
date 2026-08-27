@@ -1,6 +1,7 @@
 package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.JobId;
+import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.JobStatus;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 
@@ -23,6 +24,9 @@ public final class JobContext {
 	private final TupleSpace tupleSpace = new TupleSpace();
 	private final Set<Socket> connections = ConcurrentHashMap.newKeySet();
 	private final Set<WorkstationInfo> assignedWorkstations = ConcurrentHashMap.newKeySet();
+	private final UserContext userContext;
+	private final JobSpec spec;  // required to save if job gets delegated from broken station to working one
+
 	private volatile JobStatus status = JobStatus.READY;
 	private volatile boolean stationActive = true;  // HB will affect this value if station is not active anymore
 
@@ -30,12 +34,22 @@ public final class JobContext {
 
 	// TODO: perhaps leave here the reference to the User context to write to it's channel
 
-	public JobContext(JobId jobId) {
+	public JobContext(JobId jobId, UserContext userContext, JobSpec spec) {
 		this.jobId = jobId;
+		this.userContext = userContext;
+		this.spec = spec;
 	}
 
 	public JobId jobId() {
 		return jobId;
+	}
+
+	public UserContext userContext() {
+		return userContext;
+	}
+
+	public JobSpec specification() {
+		return spec;
 	}
 
 	public TupleSpace tupleSpace() {
@@ -51,10 +65,14 @@ public final class JobContext {
 	}
 
 	public JobStatus status() {
-		return Enum.valueOf(JobStatus.class, status.toString()); //TODO check me
+		return status;
 	}
 
-	public void setStatus(JobStatus status) {
-		this.status = status;
+	boolean tryChangeStatus(JobStatus jobStatus) {
+		if (status.canAdvanceTo(jobStatus)) {
+			status = jobStatus;
+			return true;
+		} else
+			return false;
 	}
 }

@@ -2,8 +2,8 @@ package rs.ac.bg.etf.kdp.server;
 
 import java.io.IOException;
 
-// NOTE USE OF CLIENT CONTEXT YIELDS THE USE OF CLIENT REGISTRY
-public class UserContext {
+// NOTE USE OF CLIENT CONTEXT YIELDS THE USE OF CLIENT REGISTRY ?? not quite its thread confined rather
+public final class UserContext {
 	private final String user;
 	private final CloseableMessageSink messageSink;
 

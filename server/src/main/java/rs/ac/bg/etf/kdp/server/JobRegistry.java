@@ -1,11 +1,14 @@
 package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.JobId;
+import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.JobStatus;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Server-wide table of all known jobs, {@code Map<JobId, JobContext>}.
@@ -22,8 +25,8 @@ public final class JobRegistry {
 	 * @param jobId the job to register
 	 * @return the newly created context
 	 */
-	public JobContext register(JobId jobId) {
-		JobContext context = new JobContext(jobId);
+	public JobContext register(JobId jobId, UserContext userContext, JobSpec spec) {
+		JobContext context = new JobContext(jobId, userContext, spec);
 		jobs.put(jobId, context);
 		return context;
 	}
@@ -48,18 +51,16 @@ public final class JobRegistry {
 	}
 
 	// TODO: create list of ready jobs that scheduler uses
+	public Set<Map.Entry<JobId, JobContext>> readyJobs() {
+		return jobs.entrySet().stream()
+				.filter(entry -> entry.getValue().status() == JobStatus.READY)
+				.collect(Collectors.toUnmodifiableSet());
+	}
 
 	// TODO: everything has to be thread safe
 	public void abortJob(JobId jobId) {
 		// performing the cleanup
 	}
 
-	// to shallow method for abortion and failing no cleanup performed - this is not right method
-	public boolean changeStatusTo(JobId jobId, JobStatus newStatus) {
-		JobContext found;
-		if ((found = jobs.get(jobId)) == null) return false;
 
-		found.setStatus(newStatus);
-		return true;
-	}
 }

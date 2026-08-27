@@ -133,7 +133,7 @@ public final class ServerMain implements AutoCloseable {
 				connectionHandlerFactory.getHandler(hello, messageSink, in).run();
 			}
 		} catch (EOFException | SocketException e) {
-			// normal behaviour upon receiving sentinel value from other ended communication side;
+			// normal behaviour upon receiving sentinel value from other ended communication side; or closing the socket
 		} catch (IOException | ClassNotFoundException e) {
 			LOGGER.log(Level.SEVERE,
 					"Exception of type" + e.getClass().getSimpleName()

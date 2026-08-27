@@ -80,6 +80,12 @@ public final class WorkstationRegistrator {
 	 * late cannot evict a replacement that registered under the same name in the meantime; that is
 	 * also why a {@code false} result is an ordinary outcome and not an error.
 	 * </p>
+	 *
+	 * <p>
+	 * By current implementation, since the station does not try to reconnect after being unregistered and the
+	 * channel being closed, the else path will not be reached. This is extension left for future changes so the
+	 * reconnect is supported out of box.
+	 * </p>
 	 */
 	public void unregister(WorkstationContext context) {
 		if (registry.unregister(context)) {

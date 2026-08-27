@@ -1,9 +1,12 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.protocol.JobSubmitCommand;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public final class Scheduler {
 	private final JobRegistry jobRegistry;
@@ -17,21 +20,33 @@ public final class Scheduler {
 	// NOTE I can make this return true and false; for example if no slots available return false so the handler can
 	// delegate it to queue of
 	// FIXME: since the job will be present in the jobRegistry
-	public void scheduleJob(JobSubmitCommand jobSubmit) {
-		// use the workstation registry to find the available station beware that at this time station may be
-		// disconnected
-		Optional<WorkstationContext> optContext = workstationRegistry.tryFindFreeStation();
-		if (optContext.isEmpty()) return;
+	public void scheduleReadyJobs() {
+		// get the ready jobs
+		Set<Map.Entry<JobId, JobContext>> readyEntries = jobRegistry.readyJobs();
 
-		WorkstationContext context = optContext.get();
+		// iterate over them
+		for (Map.Entry<JobId, JobContext> entry : readyEntries) {
+			JobId jobId = entry.getKey();
+			JobContext jobContext = entry.getValue();
 
-		try {
-			context.send(jobSubmit);
-		} catch (IOException e) {
-			// if exception thrown when writing to the station it's required to release the slot hold for that station
-			// note: i can be more specific about the exception
-			context.releaseSlot();
+			// use the workstation registry to find the available station beware that at this time station may be
+			// disconnected - which result in holding a lock for a gone station
+			Optional<WorkstationContext> optContext = workstationRegistry.tryFindFreeStation();
+			if (optContext.isEmpty()) return;
+
+			WorkstationContext context = optContext.get();
+
+			try {
+				context.send(new JobSubmitCommand(jobId, jobContext.specification())); // this socket might be closed at this time
+
+				// TODO: change status to scheduled
+			} catch (IOException e) {
+				// if exception thrown when writing to the station it's required to release the slot hold for that station
+				// note: i can be more specific about the exception
+				context.releaseSlot();
+			}
 		}
+
 	}
 
 	public void reportedStation(WorkstationContext workstationContext) {

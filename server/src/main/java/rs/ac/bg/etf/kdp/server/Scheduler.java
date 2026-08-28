@@ -1,11 +1,14 @@
 package rs.ac.bg.etf.kdp.server;
 
-import rs.ac.bg.etf.kdp.common.protocol.JobSubmitCommand;
+import rs.ac.bg.etf.kdp.common.protocol.JobDispatch;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.Set;
 
+// TODO: must be thread safe class
 public final class Scheduler {
+
 	private final JobRegistry jobRegistry;
 	private final WorkstationRegistry workstationRegistry;
 
@@ -14,27 +17,57 @@ public final class Scheduler {
 		this.workstationRegistry = workstationRegistry;
 	}
 
-	// NOTE I can make this return true and false; for example if no slots available return false so the handler can
-	// delegate it to queue of
-	// FIXME: since the job will be present in the jobRegistry
-	public void scheduleJob(JobSubmitCommand jobSubmit) {
-		// use the workstation registry to find the available station beware that at this time station may be
-		// disconnected
-		Optional<WorkstationContext> optContext = workstationRegistry.tryFindFreeStation();
-		if (optContext.isEmpty()) return;
+	/**
+	 * Method for scheduling ready jobs. Scheduling is performed on the snapshot of ready jobs, meaning the status of
+	 * job can change mid-way whilest scheduling. To prevent unexpected behaviour atomic action of trying to change
+	 * the status (with the support of underlying allowed advancing states) is required. This however can not prevent
+	 * the race between user actions (i.e. upon aborting the job) and forwarding the job to workstations; that type
+	 * is strictly the responsibility of job registry to properly set the status and if terminal not to change it.
+	 * <p>
+	 * This method can be called by multiple threads leading to undesired outcomes when executed by multiple threads,
+	 * such as the same ready job being forwarded to multiple stations on execution. But explicit synchronization
+	 * (with intrinsic lock per se) can be swapped with the leightweight atomic operation which checks and sets the
+	 * status of job in one go. If another thread took the precendance just proceed to the next ready job in queue.
+	 * </p>
+	 */
+	public void scheduleReadyJobs() {
+		// NOTE: ready jobs is just a snapshot so upon tacking the ready jobs it's required to hold a lock and try to
+		// update the status of the job to scheduled
 
-		WorkstationContext context = optContext.get();
+		// get the ready jobs
+		Set<JobContext> readyJobs = jobRegistry.readyJobs();
+		if (readyJobs.isEmpty()) return;
 
-		try {
-			context.send(jobSubmit);
-		} catch (IOException e) {
-			// if exception thrown when writing to the station it's required to release the slot hold for that station
-			// note: i can be more specific about the exception
-			context.releaseSlot();
+		// it's required to firstly try to set the state and then to act upon it, since vise verse might lead to data
+		// races and execution/forwarding duplication of single job. With this one thread works with one ready job at
+		// exact moment.
+		for (JobContext job : readyJobs) {
+			// try to change status to scheduled - prior user client request for job abortion has occurred
+			if (!jobRegistry.scheduled(job.jobId())) continue;
+
+			// use the workstation registry to find the available station beware that at this time station may be
+			// disconnected - which result in holding a lock for a gone station. If no stations found just return.
+			Optional<WorkstationContext> optContext = workstationRegistry.tryFindFreeStation();
+			if (optContext.isEmpty()) {
+				jobRegistry.requeued(job.jobId());
+				return;
+			}
+
+			WorkstationContext station = optContext.get();
+			jobRegistry.assignedTo(job.jobId(), station.hostName());
+
+			try {
+				station.send(new JobDispatch(job.jobId(), job.specification())); // the socket might be
+				// closed at this moment - if workstation initiates the graceful shutdown this might be sent SO WS
+				// HANDLER MUST CHECK THIS TOO - OR DELEGATE IT TO THE REGISTRATOR unregister
+				// todo: so its required to check whether there are some jobs in scheduled state too when unregister
+				//  happens
+			} catch (IOException e) {
+				// if exception thrown when writing to the station it's required to release the slot hold for that station
+				// and return the status to ready once again.
+				station.releaseSlot();
+				jobRegistry.requeued(job.jobId());
+			}
 		}
-	}
-
-	public void reportedStation(WorkstationContext workstationContext) {
-		// station just reported try to send her some jobs if any in waiting queue (job registry with ready jobs).
 	}
 }

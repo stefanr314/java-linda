@@ -1,5 +1,6 @@
 package rs.ac.bg.etf.kdp.workstation;
 
+import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
@@ -10,6 +11,7 @@ import java.net.SocketTimeoutException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +40,8 @@ public final class WorkstationMain implements AutoCloseable {
 	private final ExecutorService workers;
 	private final String os;
 	private final String javaVersion;
+
+	private final Map<JobId, Process> runningJobs = new ConcurrentHashMap<>();
 
 	private final ObjectOutputStream out;
 	private final Object sendLock = new Object();  // private lock pattern
@@ -87,8 +91,8 @@ public final class WorkstationMain implements AutoCloseable {
 
 		// LEGIT STATES
 		// --port 4090 --host localhost --capacity 2 --headless
-		// -p 4090 -h localhost -c 3
-		// --port=3030 --host=localhost --capacity=4
+		// -p 4090 -h localhost -c 3 --headless
+		// --port=3030 --host=localhost --capacity=4 --headless
 		for (int i = 0; i < args.length; i++) {
 			String arg = args[i];
 
@@ -163,20 +167,21 @@ public final class WorkstationMain implements AutoCloseable {
 				send(new Pong(ping.timeNanos()));
 			} else if (received instanceof Pong pong) {
 				// server is alive
-			} else if (received instanceof JobSubmitCommand jobSubmit) {
-				// check whether slots are truly free
+			} else if (received instanceof JobDispatch jobDispatch) {
+				// check whether slots are truly free - server lags over network i.e. workstation is source of truth
+				// check the size of map and compare it with my threads parallelism
+				if (runningJobs.size() >= parallelismCapacity) {
+					send(new JobRejected(jobDispatch.jobId(), "no free slot"));
+					continue;
+				}
 
-				// NOTE: this main must be supported and expanded
-				// firstly i need a running jobs list
+				// Reserve before submitting, so two commands arriving back to back cannot both pass the
+				// check above. This loop is single-threaded, but the map is also read by the supervision
+				// tasks, so the reservation has to be visible to them immediately.
+				runningJobs.put(jobDispatch.jobId(), null);
+				send(new JobAccepted(jobDispatch.jobId()));
 
-				// than I can check the size of list and compare it with my threads parallelism
-
-				// forward it to jobStarter class if everything fine - this class can make it return boolean
-
-				//TODO: save a max number of tries per jobId to prevent jobs that can not be completed to run
-				// multiple times
-
-				// send the confirmation message if job starter started the job
+				//workers.submit(() -> jobStarter.start(submit.jobId(), submit.specification()));
 			} else if (received instanceof Bye ignored) {
 				return; // communication ended
 			} else {

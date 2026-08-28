@@ -35,9 +35,11 @@ public final class ServerMain implements AutoCloseable {
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
 
+	private final JobLog jobLog = new JobLog();
+
 	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
 
-	private final JobRegistry jobRegistry = new JobRegistry();
+	private final JobRegistry jobRegistry = new JobRegistry(jobLog);
 
 	private final Scheduler scheduler = new Scheduler(jobRegistry, workstationRegistry);
 	private final HeartbeatDaemon heartbeat;
@@ -133,7 +135,7 @@ public final class ServerMain implements AutoCloseable {
 				connectionHandlerFactory.getHandler(hello, messageSink, in).run();
 			}
 		} catch (EOFException | SocketException e) {
-			// normal behaviour upon receiving sentinel value from other ended communication side;
+			// normal behaviour upon receiving sentinel value from other ended communication side; or closing the socket
 		} catch (IOException | ClassNotFoundException e) {
 			LOGGER.log(Level.SEVERE,
 					"Exception of type" + e.getClass().getSimpleName()

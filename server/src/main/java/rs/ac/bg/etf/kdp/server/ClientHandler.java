@@ -1,10 +1,14 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.JobId;
+import rs.ac.bg.etf.kdp.common.protocol.Bye;
 import rs.ac.bg.etf.kdp.common.protocol.Failure;
+import rs.ac.bg.etf.kdp.common.protocol.JobRegistered;
 import rs.ac.bg.etf.kdp.common.protocol.JobSubmitCommand;
 
 import java.io.IOException;
 import java.io.ObjectInput;
+import java.util.UUID;
 
 public class ClientHandler implements ConnectionHandler {
 
@@ -30,17 +34,15 @@ public class ClientHandler implements ConnectionHandler {
 	@Override
 	public void run() throws IOException, ClassNotFoundException {
 
-		// TODO: Create job context and user context
-
-		// TODO: dont forget about the job logs
+		UserContext userContext = new UserContext(messageSink, clientConnected);
 
 		try {
-			loop();
+			loop(userContext);
 		} catch (IOException e) {
 			// try catching the exception that are regular end time exception (server does handle this in some measure)
 			throw new RuntimeException(e);
 		} finally {
-			messageSink.close();  // close the user context
+			userContext.disconnect();  // close the user context
 		}
 		// when I take a better a look all of this can be done in a loop right away - just check the request type
 
@@ -80,18 +82,21 @@ public class ClientHandler implements ConnectionHandler {
 
 	}
 
-	private void loop() throws IOException, ClassNotFoundException {
+	private void loop(UserContext userContext) throws IOException, ClassNotFoundException {
 		for (; ; ) {
 			Object received = in.readObject();
 
 			if (received instanceof JobSubmitCommand jobSubmit) {
-				// do the job submit - TODO: put the job submit command wrapper with job ID and job spec
 
-				//TODO: firstly add it to the job registry
-				jobRegistry.register(jobSubmit.jobId());  // perhaps I can make this part of delegator
+				// firstly add it to the job registry - create the job id.
+				JobContext job = jobRegistry.register(new JobId(UUID.randomUUID().toString()), userContext,
+						jobSubmit.jobSpec());
 
-				// TODO: call the delegator/scheduler in help
-				scheduler.scheduleJob(jobSubmit);
+				// send the confirmation
+				messageSink.send(new JobRegistered(job.jobId()));
+
+				// call the delegator/scheduler in help
+				scheduler.scheduleReadyJobs();
 //			} else if (received instanceof CheckJobResultCommand jobResult) {
 //				// check the job result if status done
 //			} else if (received instanceof CheckJobStatusCommand checkJobStatusCommand) {
@@ -105,9 +110,9 @@ public class ClientHandler implements ConnectionHandler {
 				// IF ABORTED CALL THE CLASS FOR ABORTION
 
 				// IF DELEGATED CALL SCHEDULER TO DELEGATE ONCE AGAIN (i hope so)
-//			} else if (received instanceof Bye bye) {
-//				// client closed the connection everything should keep running anyway
-//				return;
+			} else if (received instanceof Bye ignored) {
+				// client closed the connection everything should keep running anyway
+				return;
 			} else {
 				messageSink.send(new Failure("Unknown message received: " + received.getClass()));
 			}

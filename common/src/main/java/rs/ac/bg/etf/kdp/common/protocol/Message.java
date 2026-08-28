@@ -11,5 +11,5 @@ import java.io.Serializable;
  * and a {@code String[]} payload cross the wire.
  */
 public sealed interface Message extends Serializable
-		permits Ack, BoolReply, Bye, Eval, Failure, Hello, In, Inp, JobSubmitCommand, Out, Ping, Pong, Rd, Rdp, Registered, Reply, TupleReply {
+		permits Ack, BoolReply, Bye, Eval, Failure, Hello, In, Inp, JobAccepted, JobDispatch, JobRegistered, JobRejected, JobSubmitCommand, Out, Ping, Pong, Rd, Rdp, Registered, Reply, TupleReply {
 }

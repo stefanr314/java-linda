@@ -67,7 +67,7 @@ public final class WorkstationRegistrator {
 		context.send(new Registered(context.hostName(), heartbeatPolicy));
 		LOGGER.log(Level.INFO, "Registered workstation {0}", context);
 
-		// TODO: delegator.reportStation(stationId);
+		// TODO: scheduler.scheduleReadyJobs();
 
 		return context;
 	}
@@ -88,6 +88,10 @@ public final class WorkstationRegistrator {
 	 * </p>
 	 */
 	public void unregister(WorkstationContext context) {
+		// fixme check to see whether station had running jobs and return them to ready states so scheduler can work
+		//  with them and check whether station had some scheduled jobs too.
+
+
 		if (registry.unregister(context)) {
 			LOGGER.log(Level.INFO, "Unregistered workstation {0}", context.hostName());
 		} else {

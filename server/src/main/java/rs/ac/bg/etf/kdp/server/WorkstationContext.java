@@ -78,9 +78,9 @@ public final class WorkstationContext {
 	public boolean staleTimeoutElapsed(long timeoutNanos) {
 		return System.nanoTime() - this.reportedNanoTime.get() > timeoutNanos;
 	}
+	
 	// NOTE: this method is package private so the heartbeat mechanism must live in the same package as the
 	// workstation context; letting this method be public might be too dangerous.
-
 	void reportAt(long nanoTime) {
 		this.reportedNanoTime.set(nanoTime);
 	}

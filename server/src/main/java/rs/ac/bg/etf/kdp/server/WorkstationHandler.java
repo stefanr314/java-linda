@@ -1,10 +1,7 @@
 package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
-import rs.ac.bg.etf.kdp.common.protocol.Bye;
-import rs.ac.bg.etf.kdp.common.protocol.Failure;
-import rs.ac.bg.etf.kdp.common.protocol.Ping;
-import rs.ac.bg.etf.kdp.common.protocol.Pong;
+import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -24,14 +21,18 @@ public class WorkstationHandler implements ConnectionHandler {
 	private final ObjectInput in;
 	private final WorkstationRegistrator registrator;
 	private final WorkstationInfo info;
+	private final JobRegistry jobRegistry;
+	private final Scheduler scheduler;
 
 	public WorkstationHandler(CloseableMessageSink messageSink, ObjectInput in,
 							  WorkstationRegistrator registrator,
-							  WorkstationInfo info) {
+							  WorkstationInfo info, JobRegistry jobRegistry, Scheduler scheduler) {
 		this.messageSink = messageSink;
 		this.in = in;
 		this.registrator = registrator;
 		this.info = info;
+		this.jobRegistry = jobRegistry;
+		this.scheduler = scheduler;
 	}
 
 	@Override
@@ -62,10 +63,21 @@ public class WorkstationHandler implements ConnectionHandler {
 				// workstation should not ping server but that type of communication is not harmful tbh...
 				context.reportAt(System.nanoTime());
 				context.send(new Pong(ping.timeNanos()));
-//			} else if (message instanceof JobStarted jobStarted) {
-//				// workstation has accepted and started the job
-//
-//				// CHANGE THE STATUS TO RUNNING - this is the end of chain of job submition
+			} else if (message instanceof JobAccepted jobAccepted) {
+				// workstation has accepted and started the job
+
+				// CHANGE THE STATUS TO RUNNING - this is the end of chain of job submition
+				jobRegistry.running(jobAccepted.jobId());
+			} else if (message instanceof JobRejected rejected) {
+				// station rejected the job - cleanup must be conducted
+				// release the slot of this station
+				context.releaseSlot();
+
+				// change the status of job (was scheduled) and put it back to the ready
+				jobRegistry.requeued(rejected.jobId());
+
+				// try rescheduling it back
+				scheduler.scheduleReadyJobs();
 			} else if (message instanceof Bye ignored) {
 				return;
 			} else {

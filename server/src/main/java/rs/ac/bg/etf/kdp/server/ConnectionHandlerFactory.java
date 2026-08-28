@@ -45,7 +45,8 @@ public class ConnectionHandlerFactory {
 		ConnectionHandler handler = null;
 
 		if (hello instanceof WorkstationHello wsHello) {
-			handler = new WorkstationHandler(messageSink, in, workstationRegistrator, wsHello.wsInfo());
+			handler = new WorkstationHandler(messageSink, in, workstationRegistrator, wsHello.wsInfo(), jobRegistry,
+					scheduler);
 		} else if (hello instanceof ClientHello clHello) {
 			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler);
 		} else if (hello instanceof LindaHello lindaHello) {

@@ -35,7 +35,7 @@ public class ObjectOutputCloseableMessageSink implements CloseableMessageSink {
 	@Override
 	public void close() {
 		try {
-			socket.close();  // idempotent operation as required
+			socket.close();  // idempotent operation as required (performed on Socket instance)
 		} catch (IOException ignored) {
 			// here the exception is ignored since close on Closeable is required to be idempotent
 		}

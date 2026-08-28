@@ -35,9 +35,11 @@ public final class ServerMain implements AutoCloseable {
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
 
+	private final JobLog jobLog = new JobLog();
+
 	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
 
-	private final JobRegistry jobRegistry = new JobRegistry();
+	private final JobRegistry jobRegistry = new JobRegistry(jobLog);
 
 	private final Scheduler scheduler = new Scheduler(jobRegistry, workstationRegistry);
 	private final HeartbeatDaemon heartbeat;

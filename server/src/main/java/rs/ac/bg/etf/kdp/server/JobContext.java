@@ -3,11 +3,13 @@ package rs.ac.bg.etf.kdp.server;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.JobStatus;
-import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 
+import java.io.Closeable;
 import java.net.Socket;
+import java.time.Instant;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 /**
  * Everything the server holds for a single job: its {@link TupleSpace},
@@ -20,24 +22,32 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class JobContext {
 
+	private static final Logger LOGGER = Logger.getLogger(JobContext.class.getName());
+
 	private final JobId jobId;
+
 	private final TupleSpace tupleSpace = new TupleSpace();
 	private final Set<Socket> connections = ConcurrentHashMap.newKeySet();
-	private final Set<WorkstationInfo> assignedWorkstations = ConcurrentHashMap.newKeySet();
+	private final Set<String> assignedWorkstations = ConcurrentHashMap.newKeySet();
+
 	private final UserContext userContext;
-	private final JobSpec spec;  // required to save if job gets delegated from broken station to working one
+	private final JobSpec spec;
+	// required to save if job gets delegated from broken station to working one
+	private final Object statusLock = new Object();
 
-	private volatile JobStatus status = JobStatus.READY;
-	private volatile boolean stationActive = true;  // HB will affect this value if station is not active anymore
+	// job counter received by server - serves no purpose, just required by specification of project
+	private final long jobNumber;
 
-	//TODO timestamp of job
+	private final Instant arrivedAt = Instant.now();
+	private volatile Instant completedAt;
 
-	// TODO: perhaps leave here the reference to the User context to write to it's channel
+	private volatile JobStatus status = JobStatus.READY;  // NOTE: volatile overkill if synchronization used
 
-	public JobContext(JobId jobId, UserContext userContext, JobSpec spec) {
+	public JobContext(JobId jobId, UserContext userContext, JobSpec spec, long jobCounter) {
 		this.jobId = jobId;
 		this.userContext = userContext;
 		this.spec = spec;
+		this.jobNumber = jobCounter;
 	}
 
 	public JobId jobId() {
@@ -52,15 +62,24 @@ public final class JobContext {
 		return spec;
 	}
 
+	public Instant arrivedAt() {
+		return arrivedAt;
+	}
+
+	public Instant completedAt() {
+		return completedAt;
+	}
+
 	public TupleSpace tupleSpace() {
 		return tupleSpace;
 	}
 
-	public Set<Socket> connections() {
+	// connections with stations operating on job
+	public Set<Closeable> connections() {
 		return Set.copyOf(connections);
 	}
 
-	public Set<WorkstationInfo> assignedWorkstations() {
+	public Set<String> assignedWorkstations() {
 		return Set.copyOf(assignedWorkstations);
 	}
 
@@ -68,11 +87,38 @@ public final class JobContext {
 		return status;
 	}
 
+	/**
+	 * Method for trying to change the status if new status transition is allowed according to the
+	 * {@link JobStatus#canAdvanceTo(JobStatus newJobStatus)}. If transition not allowed false value is returned.
+	 *
+	 * <p>
+	 * Synchronization is mandatory since the method will be called by multiple threads running to change the
+	 * status of job.
+	 * </p>
+	 *
+	 * @param jobStatus new status to try setting upon.
+	 * @return whether the operation managed to succeed.
+	 * @author stefanr
+	 */
 	boolean tryChangeStatus(JobStatus jobStatus) {
-		if (status.canAdvanceTo(jobStatus)) {
-			status = jobStatus;
-			return true;
-		} else
-			return false;
+		synchronized (statusLock) {
+			if (status.canAdvanceTo(jobStatus)) {
+				status = jobStatus;
+				if (jobStatus.isTerminal()) completedAt = Instant.now();
+
+				return true;
+			} else {
+
+				return false;
+			}
+		}
+	}
+
+	// TODO: method for releasing the resources both closing the tuple and closing socket connections
+
+	@Override
+	public String toString() {
+		return "JobContext[#" + jobNumber + ", " + jobId + ", " + status
+				+ (assignedWorkstations.isEmpty() ? "" : ", on " + assignedWorkstations) + "]";
 	}
 }

@@ -29,10 +29,12 @@ public final class WorkstationRegistrator {
 
 	private final WorkstationRegistry registry;
 	private final HeartbeatPolicy heartbeatPolicy;
+	private final Scheduler scheduler;
 
-	public WorkstationRegistrator(WorkstationRegistry registry, HeartbeatPolicy heartbeatPolicy) {
+	public WorkstationRegistrator(WorkstationRegistry registry, HeartbeatPolicy heartbeatPolicy, Scheduler scheduler) {
 		this.registry = Objects.requireNonNull(registry);
 		this.heartbeatPolicy = Objects.requireNonNull(heartbeatPolicy);
+		this.scheduler = scheduler;
 	}
 
 	/**
@@ -67,7 +69,7 @@ public final class WorkstationRegistrator {
 		context.send(new Registered(context.hostName(), heartbeatPolicy));
 		LOGGER.log(Level.INFO, "Registered workstation {0}", context);
 
-		// TODO: scheduler.scheduleReadyJobs();
+		scheduler.scheduleReadyJobs();
 
 		return context;
 	}
@@ -90,6 +92,8 @@ public final class WorkstationRegistrator {
 	public void unregister(WorkstationContext context) {
 		// fixme check to see whether station had running jobs and return them to ready states so scheduler can work
 		//  with them and check whether station had some scheduled jobs too.
+
+		//todo: also remove the connection from job context and station from assigned workstations
 
 
 		if (registry.unregister(context)) {

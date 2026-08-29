@@ -77,8 +77,6 @@ public class HeartbeatDaemon implements AutoCloseable {
 				// Exception (will I receive RST here does not really matter); the return message should be caught by
 				// client handle - timeout on this value perhaps???
 
-				// IT will be handy if I use PENDING STATE AT THIS TIME since the user makes the decision
-
 				// let the HB catch the Socket Exception and call the job registry to abort the job
 				workstation.disconnect();
 				continue;

@@ -5,6 +5,7 @@ import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
+import java.util.logging.Logger;
 
 /**
  * Handler dedicated for working with workstations. Handle all the communication, registering the stations. All the
@@ -16,6 +17,8 @@ import java.io.ObjectInput;
  * </p>
  */
 public class WorkstationHandler implements ConnectionHandler {
+
+	private final static Logger LOGGER = Logger.getLogger(WorkstationHandler.class.getName());
 
 	private final CloseableMessageSink messageSink;
 	private final ObjectInput in;
@@ -64,7 +67,7 @@ public class WorkstationHandler implements ConnectionHandler {
 				context.reportAt(System.nanoTime());
 				context.send(new Pong(ping.timeNanos()));
 			} else if (message instanceof JobAccepted jobAccepted) {
-				// workstation has accepted and started the job
+				LOGGER.info("Workstation: %s has accepted the job: %s".formatted(context.hostName(), jobAccepted.jobId()));
 
 				// CHANGE THE STATUS TO RUNNING - this is the end of chain of job submition
 				jobRegistry.running(jobAccepted.jobId());

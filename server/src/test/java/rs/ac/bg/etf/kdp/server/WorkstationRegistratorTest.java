@@ -16,6 +16,8 @@ class WorkstationRegistratorTest {
 	private final WorkstationRegistry registry = new WorkstationRegistry();
 	private WorkstationContextTest.FakeMessageSink fakeSink;
 	private WorkstationRegistrator registrator;
+	private JobLog jobLog = new JobLog();
+	private final JobRegistry jobRegistry = new JobRegistry(jobLog);
 
 	@BeforeEach
 	void setup() {
@@ -24,8 +26,10 @@ class WorkstationRegistratorTest {
 		WorkstationInfo info = new WorkstationInfo("ws-21", "Arch Linux", "21.0.1", 5);
 		WorkstationContext context = new WorkstationContext(info, fakeSink);
 
+		Scheduler scheduler = new Scheduler(jobRegistry, registry);
+
 		registry.register(context);
-		registrator = new WorkstationRegistrator(registry, heartbeatPolicy);
+		registrator = new WorkstationRegistrator(registry, heartbeatPolicy, scheduler);
 	}
 
 	@Test

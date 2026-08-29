@@ -59,7 +59,6 @@ public final class Scheduler {
 			jobRegistry.assignedTo(job.jobId(), station.hostName());
 
 			try {
-				LOGGER.info("Delegating the job");
 				station.send(new JobDispatch(job.jobId(), job.specification())); // the socket might be
 				// closed at this moment - if workstation initiates the graceful shutdown this might be sent SO WS
 				// HANDLER MUST CHECK THIS TOO - OR DELEGATE IT TO THE REGISTRATOR unregister
@@ -68,7 +67,7 @@ public final class Scheduler {
 			} catch (IOException e) {
 				// if exception thrown when writing to the station it's required to release the slot hold for that station
 				// and return the status to ready once again.
-				LOGGER.info("Station socket not reachable");
+				LOGGER.info("Station socket not reachable. On station: " + station.hostName());
 
 				station.releaseSlot();
 				jobRegistry.requeued(job.jobId());

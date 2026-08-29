@@ -1,10 +1,7 @@
 package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.JobId;
-import rs.ac.bg.etf.kdp.common.protocol.Bye;
-import rs.ac.bg.etf.kdp.common.protocol.Failure;
-import rs.ac.bg.etf.kdp.common.protocol.JobRegistered;
-import rs.ac.bg.etf.kdp.common.protocol.JobSubmitCommand;
+import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -12,7 +9,7 @@ import java.util.UUID;
 
 public class ClientHandler implements ConnectionHandler {
 
-	private final CloseableMessageSink messageSink;  // FIXME USE THE CLIENT CONTEXT INSTEAD
+	private final CloseableMessageSink messageSink;
 	private final ObjectInput in;
 	private final JobRegistry jobRegistry;
 	private final String clientConnected;
@@ -35,12 +32,13 @@ public class ClientHandler implements ConnectionHandler {
 	public void run() throws IOException, ClassNotFoundException {
 
 		UserContext userContext = new UserContext(messageSink, clientConnected);
+		userContext.send(new Reply("Welcome client %s.".formatted(clientConnected)));
 
 		try {
 			loop(userContext);
 		} catch (IOException e) {
 			// try catching the exception that are regular end time exception (server does handle this in some measure)
-			throw new RuntimeException(e);
+			throw new RuntimeException(e); //fixme
 		} finally {
 			userContext.disconnect();  // close the user context
 		}
@@ -93,7 +91,7 @@ public class ClientHandler implements ConnectionHandler {
 						jobSubmit.jobSpec());
 
 				// send the confirmation
-				messageSink.send(new JobRegistered(job.jobId()));
+				userContext.send(new JobRegistered(job.jobId()));
 
 				// call the delegator/scheduler in help
 				scheduler.scheduleReadyJobs();

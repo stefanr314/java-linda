@@ -7,6 +7,7 @@ import rs.ac.bg.etf.kdp.common.JobStatus;
 import java.io.Closeable;
 import java.net.Socket;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
@@ -81,6 +82,10 @@ public final class JobContext {
 
 	public Set<String> assignedWorkstations() {
 		return Set.copyOf(assignedWorkstations);
+	}
+
+	public void assignNewWorkstation(String hostname) {
+		assignedWorkstations.add(Objects.requireNonNull(hostname));
 	}
 
 	public JobStatus status() {

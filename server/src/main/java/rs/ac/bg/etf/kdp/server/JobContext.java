@@ -5,7 +5,6 @@ import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.JobStatus;
 
 import java.io.Closeable;
-import java.net.Socket;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Set;
@@ -28,11 +27,12 @@ public final class JobContext {
 	private final JobId jobId;
 
 	private final TupleSpace tupleSpace = new TupleSpace();
-	private final Set<Socket> connections = ConcurrentHashMap.newKeySet();
+	private final Set<Closeable> connections = ConcurrentHashMap.newKeySet();
 	private final Set<String> assignedWorkstations = ConcurrentHashMap.newKeySet();
 
 	private final UserContext userContext;
 	private final JobSpec spec;
+
 	// required to save if job gets delegated from broken station to working one
 	private final Object statusLock = new Object();
 
@@ -120,6 +120,11 @@ public final class JobContext {
 	}
 
 	// TODO: method for releasing the resources both closing the tuple and closing socket connections
+
+	public void removeFailedStation(Closeable socket, String workstationHostname) {
+		connections.remove(Objects.requireNonNull(socket));
+		assignedWorkstations.remove(Objects.requireNonNull(workstationHostname));
+	}
 
 	@Override
 	public String toString() {

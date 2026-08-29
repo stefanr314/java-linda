@@ -25,3 +25,6 @@ dependency-reduced-pom.xml
 
 #todo manager
 .todo
+
+# perosnal notes
+NOTES.md

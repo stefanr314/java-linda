@@ -81,7 +81,7 @@ public final class JobRegistry {
 	}
 
 	public void assignedTo(JobId jobId, String hostName) {
-		getContext(jobId).assignedWorkstations().add(hostName);
+		getContext(jobId).assignNewWorkstation(hostName);
 		jobLog.append(getContext(jobId));
 	}
 

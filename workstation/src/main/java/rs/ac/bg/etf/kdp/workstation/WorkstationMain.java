@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -41,7 +42,13 @@ public final class WorkstationMain implements AutoCloseable {
 	private final String os;
 	private final String javaVersion;
 
-	private final Map<JobId, Process> runningJobs = new ConcurrentHashMap<>();
+	private final Map<JobId, Process> runningJobs = new ConcurrentHashMap<>(); // todo check
+
+	/*
+	This field serves as the counter of accepted jobs. Workstation main/run thread is the only writer that ever
+	increments this field - TODO refactoring this field and moving it to the job executor class
+	 */
+	private final AtomicInteger acceptedJobs = new AtomicInteger();
 
 	private final ObjectOutputStream out;
 	private final Object sendLock = new Object();  // private lock pattern
@@ -153,6 +160,9 @@ public final class WorkstationMain implements AutoCloseable {
 		}
 	}
 
+	/*
+	Thread confined code.
+	 */
 	private void waitForWork(ObjectInput in) throws IOException, ClassNotFoundException {
 		for (; ; ) {
 			Object received = in.readObject();
@@ -166,20 +176,22 @@ public final class WorkstationMain implements AutoCloseable {
 				LOGGER.info("Server ping received, ponging back...");
 				send(new Pong(ping.timeNanos()));
 			} else if (received instanceof Pong pong) {
-				// server is alive
+				// server is alive - separate thread required for connection check
 			} else if (received instanceof JobDispatch jobDispatch) {
 				// check whether slots are truly free - server lags over network i.e. workstation is source of truth
 				// check the size of map and compare it with my threads parallelism
-				if (runningJobs.size() >= parallelismCapacity) {
-					send(new JobRejected(jobDispatch.jobId(), "no free slot"));
+				if (acceptedJobs.get() >= parallelismCapacity) {
+					send(new JobRejected(jobDispatch.jobId(), "No free slot"));
 					continue;
 				}
 
 				// Reserve before submitting, so two commands arriving back to back cannot both pass the
 				// check above. This loop is single-threaded, but the map is also read by the supervision
 				// tasks, so the reservation has to be visible to them immediately.
-				runningJobs.put(jobDispatch.jobId(), null);
+				acceptedJobs.incrementAndGet();  //NOTE: no race condition since only one writer exists
 				send(new JobAccepted(jobDispatch.jobId()));
+
+				LOGGER.info("Job with id: %s getting ready to run".formatted(jobDispatch.jobId()));
 
 				//workers.submit(() -> jobStarter.start(submit.jobId(), submit.specification()));
 			} else if (received instanceof Bye ignored) {

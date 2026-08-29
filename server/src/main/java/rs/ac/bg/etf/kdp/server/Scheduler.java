@@ -5,9 +5,11 @@ import rs.ac.bg.etf.kdp.common.protocol.JobDispatch;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.logging.Logger;
 
-// TODO: must be thread safe class
 public final class Scheduler {
+
+	private static final Logger LOGGER = Logger.getLogger(Scheduler.class.getName());
 
 	private final JobRegistry jobRegistry;
 	private final WorkstationRegistry workstationRegistry;
@@ -57,6 +59,7 @@ public final class Scheduler {
 			jobRegistry.assignedTo(job.jobId(), station.hostName());
 
 			try {
+				LOGGER.info("Delegating the job");
 				station.send(new JobDispatch(job.jobId(), job.specification())); // the socket might be
 				// closed at this moment - if workstation initiates the graceful shutdown this might be sent SO WS
 				// HANDLER MUST CHECK THIS TOO - OR DELEGATE IT TO THE REGISTRATOR unregister
@@ -65,6 +68,8 @@ public final class Scheduler {
 			} catch (IOException e) {
 				// if exception thrown when writing to the station it's required to release the slot hold for that station
 				// and return the status to ready once again.
+				LOGGER.info("Station socket not reachable");
+
 				station.releaseSlot();
 				jobRegistry.requeued(job.jobId());
 			}

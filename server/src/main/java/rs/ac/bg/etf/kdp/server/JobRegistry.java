@@ -5,15 +5,11 @@ import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.JobStatus;
 import rs.ac.bg.etf.kdp.common.exceptions.JobNotPresentInRegistryException;
 
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 /**
  * Server-wide table of all known jobs, {@code Map<JobId, JobContext>}.
@@ -26,7 +22,6 @@ public final class JobRegistry {
 
 	// required by specification
 	private final AtomicLong jobCounter = new AtomicLong();
-
 	private final JobLog jobLog;
 
 	public JobRegistry(JobLog jobLog) {
@@ -74,11 +69,32 @@ public final class JobRegistry {
 		jobs.remove(jobId);
 	}
 
-	public Set<JobContext> readyJobs() {
+	/**
+	 * Method for returning ready jobs with respect to FIFO based on arrived time.
+	 *
+	 * @return list of FIFO ready jobs based on arrived times.
+	 */
+	public List<JobContext> readyJobs() {
 		return jobs.values().stream()
 				.filter(context -> context.status() == JobStatus.READY)
-				.collect(Collectors.toUnmodifiableSet());
+				.sorted(Comparator.comparing(JobContext::arrivedAt))
+				.toList();
 	}
+
+	/**
+	 * Method for checking active (i.e. non-terminal) jobs on workstation. This is the only place that connects jobs
+	 * and workstations.
+	 *
+	 * @param workstationHostname station to look for jobs
+	 * @return list of active (non-terminal) jobs on station
+	 */
+	public List<JobContext> activeJobsOn(String workstationHostname) {
+		return jobs.values().stream()
+				.filter(ctx -> ctx.assignedWorkstations().contains(workstationHostname))
+				.filter(ctx -> !ctx.status().isTerminal())
+				.toList();
+	}
+
 
 	public void assignedTo(JobId jobId, String hostName) {
 		getContext(jobId).assignNewWorkstation(hostName);
@@ -102,6 +118,11 @@ public final class JobRegistry {
 		transit(jobId, JobStatus.READY);
 	}
 
+	public void running(JobId jobId) {
+		// todo: ws info is required for performing the write to set connections.
+		transit(jobId, JobStatus.RUNNING);
+	}
+
 	// private method for changing the status of jobs -> must be thread safe -> delegated to stack confinement and
 	// atomic operations on collaborators
 	private boolean transit(JobId jobId, JobStatus next) {
@@ -123,9 +144,5 @@ public final class JobRegistry {
 			throw new JobNotPresentInRegistryException(jobId);
 		}
 		return context;
-	}
-
-	public void running(JobId jobId) {
-		transit(jobId, JobStatus.RUNNING);
 	}
 }

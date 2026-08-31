@@ -73,9 +73,8 @@ public class HeartbeatDaemon implements AutoCloseable {
 				// check whether station had any jobs on it by reaching the job registry
 
 				// reach the user context to write him a message - if connection is closed an exception will
-				// eventually be thrown (perhaps the first message succeeds) and should be caught with the Socket
-				// Exception (will I receive RST here does not really matter); the return message should be caught by
-				// client handle - timeout on this value perhaps???
+				// eventually be thrown; perhaps the first message succeeds but the client handler will read the RST
+				// eventually and will return with the exception;
 
 				// let the HB catch the Socket Exception and call the job registry to abort the job
 				workstation.disconnect();

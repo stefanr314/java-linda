@@ -38,46 +38,17 @@ public class ClientHandler implements ConnectionHandler {
 			loop(userContext);
 		} catch (IOException e) {
 			// try catching the exception that are regular end time exception (server does handle this in some measure)
+			// if user is gone before the server finds out and at that time moment the station fails, the message
+			// sent by the HB will be caught here (by read operation) with the Socket Exception (broken pipe or so).
+			// That's sign to abort the job -> BUT WHAT CONNECTS THE CLIENT AND THE JOB (save the jobContext from
+			// below perhaps?) -> also it's tricky to check whether the station died here on just something else
+			// happened so the socket is close (ne mogu da ugasim posao ako jednostavnoe ne znam da li to treba da
+			// uradim jer je hb uocio mrtvu stanicu i klijent nije dostupan ili jednostavno pukao socket ka klijentu
+			// znaci zato mi treba neki flag na job contextu stanica mrtva ili nesto slicno).
 			throw new RuntimeException(e); //fixme
 		} finally {
 			userContext.disconnect();  // close the user context
 		}
-		// when I take a better a look all of this can be done in a loop right away - just check the request type
-
-		// request types - job submit, job check, job abort, iF JOB IS FINISHED but CLIENT IS NOT REACHABLE WRITE
-		// IT TO SOME STRUCTURE ??; it will be in Job Registry with status DONE
-
-		// check for data - should be jar data (read in chunks) WHAT TO DO IF NOT - send(new Failure) return;
-		// PERFORMED ON CLIENT OUT CHANNEL NOT THE WORKSTATION ONE - THIS SHOULD ALSO BE SEPARATED IN SOME CLIENT
-		// CONTEXT ???; d fak this means first of all data does not need be jar client can make different requests
-		// does not need to perform posting the jar data immediately
-
-		// SO THIS HANDLER HAS TO FIRSTLY CHECK WHETHER THE CLIENT HAS JOB IN CLIENT CONTEXT - CLIENT CAN BE
-		// DESCRIBED WITH THE HELP OF SOCKET.port (this is the limitation since there is no registration of clients
-		// to the app) ??; no it does not it's fine if there is no job in job registry d fak is client context just
-		// job id is required to be somehow saved on client side write it to some structure so that client can query
-		// it, or not event this is obligatory client just needs to keep the program running but can explicitly close
-		// the socket connection
-
-		// job id generation - this should be received tbh ?? yes the client has to have the job id generated and saved
-
-		// reach for the scheduler - i.e. registry ?? what registry, I need the scheduler that will use the
-		// workstation reg to reach the context and send the job so scheduler is bridge between job registry and
-		// workstations
-
-		// await for the response
-
-		// if found send job request to the workstation use out channel (should be forwarded from factory)
-
-		// wait to see the job in job registry - this is the responsibility of workstation handler to write it to the
-		// registry if everything is fine - either block until i see ws handler has written da ws accepted the job or
-		// attach a listener ??; actually not quite the job should be in registry straight away just the status changes
-
-		// if not present just return the message that station is not available right now ??; not really rather keep
-		// the job in queue for some time perhaps a station will become available eventually (this keep requested job
-		// time can be manipulated)
-
-
 	}
 
 	private void loop(UserContext userContext) throws IOException, ClassNotFoundException {

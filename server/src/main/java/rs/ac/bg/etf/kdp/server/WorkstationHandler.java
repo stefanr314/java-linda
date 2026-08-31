@@ -70,7 +70,7 @@ public class WorkstationHandler implements ConnectionHandler {
 				LOGGER.info("Workstation: %s has accepted the job: %s".formatted(context.hostName(), jobAccepted.jobId()));
 
 				// CHANGE THE STATUS TO RUNNING - this is the end of chain of job submition
-				jobRegistry.running(jobAccepted.jobId());
+				jobRegistry.running(jobAccepted.jobId());  //todo: ws info is required to be passed?
 			} else if (message instanceof JobRejected rejected) {
 				// station rejected the job - cleanup must be conducted
 				// release the slot of this station

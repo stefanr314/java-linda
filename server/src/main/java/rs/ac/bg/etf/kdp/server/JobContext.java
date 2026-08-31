@@ -26,7 +26,15 @@ public final class JobContext {
 
 	private final JobId jobId;
 
+	/*
+	Tuple space for writing the data (tuples and templates). Lives on server.
+	 */
 	private final TupleSpace tupleSpace = new TupleSpace();
+
+	/*
+	Connection(s) to outer workstation(s) that perform the job execution. Must be closed on terminal states and
+	disconnection of station(s). TODO: consider workstation context instead
+	 */
 	private final Set<Closeable> connections = ConcurrentHashMap.newKeySet();
 	private final Set<String> assignedWorkstations = ConcurrentHashMap.newKeySet();
 
@@ -75,7 +83,6 @@ public final class JobContext {
 		return tupleSpace;
 	}
 
-	// connections with stations operating on job
 	public Set<Closeable> connections() {
 		return Set.copyOf(connections);
 	}

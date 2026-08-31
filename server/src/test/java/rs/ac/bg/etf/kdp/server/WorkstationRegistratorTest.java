@@ -29,7 +29,7 @@ class WorkstationRegistratorTest {
 		Scheduler scheduler = new Scheduler(jobRegistry, registry);
 
 		registry.register(context);
-		registrator = new WorkstationRegistrator(registry, heartbeatPolicy, scheduler);
+		registrator = new WorkstationRegistrator(registry, heartbeatPolicy, scheduler, jobRegistry);
 	}
 
 	@Test

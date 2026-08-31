@@ -3,8 +3,8 @@ package rs.ac.bg.etf.kdp.server;
 import rs.ac.bg.etf.kdp.common.protocol.JobDispatch;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.logging.Logger;
 
 public final class Scheduler {
@@ -37,7 +37,7 @@ public final class Scheduler {
 		// update the status of the job to scheduled
 
 		// get the ready jobs
-		Set<JobContext> readyJobs = jobRegistry.readyJobs();
+		List<JobContext> readyJobs = jobRegistry.readyJobs();
 		if (readyJobs.isEmpty()) return;
 
 		// it's required to firstly try to set the state and then to act upon it, since vise verse might lead to data

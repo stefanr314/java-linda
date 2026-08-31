@@ -5,6 +5,7 @@ import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 import rs.ac.bg.etf.kdp.common.protocol.Registered;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -30,11 +31,13 @@ public final class WorkstationRegistrator {
 	private final WorkstationRegistry registry;
 	private final HeartbeatPolicy heartbeatPolicy;
 	private final Scheduler scheduler;
+	private final JobRegistry jobRegistry;
 
-	public WorkstationRegistrator(WorkstationRegistry registry, HeartbeatPolicy heartbeatPolicy, Scheduler scheduler) {
+	public WorkstationRegistrator(WorkstationRegistry registry, HeartbeatPolicy heartbeatPolicy, Scheduler scheduler, JobRegistry jobRegistry) {
 		this.registry = Objects.requireNonNull(registry);
 		this.heartbeatPolicy = Objects.requireNonNull(heartbeatPolicy);
 		this.scheduler = scheduler;
+		this.jobRegistry = jobRegistry;
 	}
 
 	/**
@@ -90,11 +93,15 @@ public final class WorkstationRegistrator {
 	 * </p>
 	 */
 	public void unregister(WorkstationContext context) {
-		// fixme check to see whether station had running jobs and return them to ready states so scheduler can work
-		//  with them and check whether station had some scheduled jobs too.
+		List<JobContext> jobsOn = jobRegistry.activeJobsOn(context.hostName());
 
-		//todo: also remove the connection from job context and station from assigned workstations
+		for (JobContext job : jobsOn) {
+			//todo: also remove the connection from job context and station from assigned workstations
 
+//			job.removeFailedStation(context, context.hostName());
+			LOGGER.info("Rescheduling jobs from stations: " + context.hostName());
+			jobRegistry.requeued(job.jobId());
+		}
 
 		if (registry.unregister(context)) {
 			LOGGER.log(Level.INFO, "Unregistered workstation {0}", context.hostName());

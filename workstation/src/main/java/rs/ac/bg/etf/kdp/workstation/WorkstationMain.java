@@ -1,6 +1,5 @@
 package rs.ac.bg.etf.kdp.workstation;
 
-import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
@@ -11,11 +10,9 @@ import java.net.SocketTimeoutException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -33,38 +30,39 @@ public final class WorkstationMain implements AutoCloseable {
 
 	private final static long INITIAL_SO_TIMEOUT = TimeUnit.SECONDS.toMillis(60);
 
-	private final String hostname;
-
 	private final Socket socket;
-	private final int parallelismCapacity;
+	private final ObjectOutputStream out;
+	private final MessageSink sink;
 
 	private final ExecutorService workers;
+
+	private final JobReporter reporter;
+
+	private final JobExecutor jobExecutor;
+
 	private final String os;
+	private final String hostname;
 	private final String javaVersion;
+	private final int parallelismCapacity;
 
-	private final Map<JobId, Process> runningJobs = new ConcurrentHashMap<>(); // todo check
-
-	/*
-	This field serves as the counter of accepted jobs. Workstation main/run thread is the only writer that ever
-	increments this field - TODO refactoring this field and moving it to the job executor class
-	 */
-	private final AtomicInteger acceptedJobs = new AtomicInteger();
-
-	private final ObjectOutputStream out;
-	private final Object sendLock = new Object();  // private lock pattern
 
 	public WorkstationMain(String serverHostname, int serverPort, int capacity) throws IOException {
 		this.socket = new Socket(serverHostname, serverPort);
 		this.socket.setSoTimeout((int) INITIAL_SO_TIMEOUT);
 
-		this.parallelismCapacity = capacity;
+		this.out = new ObjectOutputStream(socket.getOutputStream());
+		this.sink = new ObjectMessageSink(out);
 
+		this.parallelismCapacity = capacity;
 		this.workers = Executors.newFixedThreadPool(parallelismCapacity);
+
+		this.reporter = new ReporterMessageSink(sink);
+
+		this.jobExecutor = new JobExecutor(parallelismCapacity, reporter, workers);
+
 		this.os = System.getProperty("os.name");
 		this.javaVersion = getJavaVersionFromRuntime();
 		this.hostname = "ws-" + UUID.randomUUID().toString().substring(0, 16);
-
-		this.out = new ObjectOutputStream(socket.getOutputStream());
 	}
 
 	public static void main(String[] args) {
@@ -84,9 +82,7 @@ public final class WorkstationMain implements AutoCloseable {
 			LOGGER.info(workstation.workstationInfo().toString());
 
 			// required to destroy all processes upon closing of the parent process
-//			Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-//				runningJobs.values().forEach(Process::destroyForcibly);
-//			}));
+			Runtime.getRuntime().addShutdownHook(new Thread(workstation.jobExecutor::destroyAll));
 			workstation.run();
 		} catch (IOException e) {
 			System.err.println("IO exception with message: " + e.getMessage());
@@ -135,7 +131,7 @@ public final class WorkstationMain implements AutoCloseable {
 			 out) {
 			out.flush();
 			try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-				send(new WorkstationHello(workstationInfo()));
+				sink.send(new WorkstationHello(workstationInfo()));
 
 				// covered by initial so timeout i.e. wait a minute until serer responds
 				Object ack = in.readObject();
@@ -168,47 +164,29 @@ public final class WorkstationMain implements AutoCloseable {
 			Object received = in.readObject();
 
 			if (!(received instanceof Message)) {
-				send(new Failure("Unknown frame " + received.getClass().getSimpleName()));
+				sink.send(new Failure("Unknown frame " + received.getClass().getSimpleName()));
 				continue;
 			}
 
 			if (received instanceof Ping ping) {
 				LOGGER.info("Server ping received, ponging back...");
-				send(new Pong(ping.timeNanos()));
+				sink.send(new Pong(ping.timeNanos()));
 			} else if (received instanceof Pong pong) {
 				// server is alive - separate thread required for connection check
 			} else if (received instanceof JobDispatch jobDispatch) {
-				// check whether slots are truly free - server lags over network i.e. workstation is source of truth
-				// check the size of map and compare it with my threads parallelism
-				if (acceptedJobs.get() >= parallelismCapacity) {
-					send(new JobRejected(jobDispatch.jobId(), "No free slot"));
-					continue;
+				if (jobExecutor.accept(jobDispatch.jobId(), jobDispatch.jobSpec())) {
+					sink.send(new JobAccepted(jobDispatch.jobId()));
+				} else {
+					sink.send(new JobRejected(jobDispatch.jobId(), "All workers occupied."));
 				}
-
-				// Reserve before submitting, so two commands arriving back to back cannot both pass the
-				// check above. This loop is single-threaded, but the map is also read by the supervision
-				// tasks, so the reservation has to be visible to them immediately.
-				acceptedJobs.incrementAndGet();  //NOTE: no race condition since only one writer exists
-				send(new JobAccepted(jobDispatch.jobId()));
-
-				LOGGER.info("Job with id: %s getting ready to run".formatted(jobDispatch.jobId()));
-
-				//workers.submit(() -> jobStarter.start(submit.jobId(), submit.specification()));
 			} else if (received instanceof Bye ignored) {
 				return; // communication ended
 			} else {
-				send(new Failure("Message not recognized: " + received.getClass()));
+				sink.send(new Failure("Message not recognized: " + received.getClass()));
 			}
 		}
 	}
 
-	private void send(Object message) throws IOException {
-		synchronized (sendLock) {
-			out.writeObject(message);
-			out.reset();
-			out.flush();
-		}
-	}
 
 	@Override
 	public void close() throws IOException {

@@ -52,6 +52,7 @@ public final class ClientMain implements AutoCloseable {
 		String host = args.length > 0 ? args[0] : "localhost";
 		int port = args.length > 1 ? Integer.parseInt(args[1]) : 4040;
 
+		// todo: job submit process entails the actual job jar
 		// A job that needs nothing: prints a line and exits 0. Enough to prove the workstation can
 		// actually launch a process and report back.
 		JobSpec spec = new JobSpec(
@@ -59,7 +60,7 @@ public final class ClientMain implements AutoCloseable {
 				List.of(),
 				List.of());
 
-		try (ClientMain client = new ClientMain(host, port, "giampaolo ricci")) {
+		try (ClientMain client = new ClientMain(host, port, "Giampaolo Ricci")) {
 			client.handshake(client.user);
 
 			JobId jobId = client.submit(spec);

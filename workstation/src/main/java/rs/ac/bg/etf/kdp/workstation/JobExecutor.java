@@ -16,6 +16,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class JobExecutor {
+
+	private static final Path BASE_TEMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "workstation_jobs");
 	/*
 	This field serves as the counter of accepted jobs. This executor is the only writer so volatile is enough.
 	 */
@@ -109,7 +111,7 @@ public final class JobExecutor {
 			runningJob.stderr().join(2000);
 			runningJob.stdout().join(2000);
 
-			if (exitCode == 0) reporter.finished(jobId, collectResults(jobId, jobSpec, runningJob.workDir()));
+			if (exitCode == 0) reporter.finished(new CollectedResults(jobId, jobSpec, runningJob.workDir()));
 			else reporter.failed(jobId, "exit code " + exitCode);
 		} catch (IOException failedToStart) {
 			reporter.failed(jobId, failedToStart.getMessage());
@@ -124,11 +126,10 @@ public final class JobExecutor {
 
 	private RunningJob start(JobId jobId, JobSpec jobSpec) throws IOException {
 		//fixme can be left outside somewhere
-		Path baseTempDir = Paths.get(System.getProperty("java.io.tmpdir"), "workstation_jobs");
-		Files.createDirectories(baseTempDir);
+		Files.createDirectories(BASE_TEMP_DIR);
 
 		// create job specific temp dir job_jobId form
-		Path jobDirPath = Files.createTempDirectory(baseTempDir, "job_%s_".formatted(jobId.value()));
+		Path jobDirPath = Files.createTempDirectory(BASE_TEMP_DIR, "job_%s_".formatted(jobId.value()));
 
 		// create logs dir
 		Path logs = jobDirPath.resolve("logs");
@@ -181,11 +182,6 @@ public final class JobExecutor {
 		stderr.start();
 
 		return new RunningJob(job, jobDirPath, stdout, stderr);
-	}
-
-	private String collectResults(JobId jobId, JobSpec spec, Path workDir) {
-
-		return "TO DO";
 	}
 
 	private record RunningJob(Process process, Path workDir, Thread stdout, Thread stderr) {

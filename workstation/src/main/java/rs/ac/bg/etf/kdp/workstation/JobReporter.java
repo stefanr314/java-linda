@@ -8,7 +8,7 @@ public interface JobReporter {
 
 	void running(JobId jobId) throws IOException;
 
-	void finished(JobId jobId, String results);
+	void finished(CollectedResults results) throws IOException;
 
 	void failed(JobId jobId, String reason);
 }

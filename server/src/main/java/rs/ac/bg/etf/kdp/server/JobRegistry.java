@@ -145,4 +145,9 @@ public final class JobRegistry {
 		}
 		return context;
 	}
+
+	public void finished(JobId jobId) {
+		//todo IMPLEMENT ME
+		transit(jobId, JobStatus.DONE);
+	}
 }

@@ -15,6 +15,7 @@ public final class ObjectMessageSink implements MessageSink {
 	public void send(Object message) throws IOException {
 		synchronized (senderLock) {
 			out.writeObject(message);
+			
 			out.reset();
 			out.flush();
 		}

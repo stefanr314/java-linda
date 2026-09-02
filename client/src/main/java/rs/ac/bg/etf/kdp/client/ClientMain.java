@@ -57,7 +57,7 @@ public final class ClientMain implements AutoCloseable {
 		// actually launch a process and report back.
 		JobSpec spec = new JobSpec(
 				"java -version",
-				List.of(),
+				List.of("lib1", "lib2", "lib3"),
 				List.of());
 
 		try (ClientMain client = new ClientMain(host, port, "Giampaolo Ricci")) {

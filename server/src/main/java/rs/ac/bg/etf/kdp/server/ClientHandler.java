@@ -78,7 +78,7 @@ public class ClientHandler implements ConnectionHandler {
 				// client either aborted or delegated the job to next free station
 				// IF ABORTED CALL THE CLASS FOR ABORTION
 
-				// IF DELEGATED CALL SCHEDULER TO DELEGATE ONCE AGAIN (i hope so)
+				// IF DELEGATED CALL SCHEDULER TO DELEGATE ONCE AGAIN (I hope so)
 			} else if (received instanceof Bye ignored) {
 				// client closed the connection everything should keep running anyway
 				return;

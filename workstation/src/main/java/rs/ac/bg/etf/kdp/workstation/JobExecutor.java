@@ -3,19 +3,21 @@ package rs.ac.bg.etf.kdp.workstation;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.Charset;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class JobExecutor {
-	//todo implement job reporter to the main thread
+
+	private static final Path BASE_TEMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "workstation_jobs");
 	/*
 	This field serves as the counter of accepted jobs. This executor is the only writer so volatile is enough.
 	 */
@@ -28,12 +30,6 @@ public final class JobExecutor {
 	private final Map<JobId, Process> runningJobs = new ConcurrentHashMap<>();
 	private final JobReporter reporter;
 	private final ExecutorService workers;
-
-	private final ByteArrayOutputStream tempOut = new ByteArrayOutputStream();
-	private final ByteArrayOutputStream tempErr = new ByteArrayOutputStream();
-
-	private Thread stdout;
-	private Thread stderr;
 
 	public JobExecutor(int parallelismCapacity, JobReporter reporter, ExecutorService workers) {
 		this.parallelismCapacity = parallelismCapacity;
@@ -65,8 +61,7 @@ public final class JobExecutor {
 		acceptedJobs.incrementAndGet();
 
 		// run the job
-//		workers.submit(() -> supervise(jobId, jobSpec));
-		CompletableFuture.supplyAsync(() -> supervise(jobId, jobSpec), workers).thenAccept(System.out::println);
+		workers.submit(() -> supervise(jobId, jobSpec));
 
 		return true;
 	}
@@ -98,28 +93,26 @@ public final class JobExecutor {
 	 * @param jobId   id of job to supervise
 	 * @param jobSpec specification of job to supervise
 	 */
-	private String supervise(JobId jobId, JobSpec jobSpec) {
-		Process job;
+	private void supervise(JobId jobId, JobSpec jobSpec) {
+		RunningJob runningJob;
 		try {
 			// delegate the creation of job
-			job = start(jobId, jobSpec);
+			runningJob = start(jobId, jobSpec);
+
+			Process process = runningJob.process();
 
 			// add to the map
-			runningJobs.put(jobId, job);
+			runningJobs.put(jobId, process);
 
 			// report the new status to ws-main
 			reporter.running(jobId);
 
-			int exitCode = job.waitFor();
-			stdout.join();
-			stderr.join();
+			int exitCode = process.waitFor();
+			runningJob.stderr().join(2000);
+			runningJob.stdout().join(2000);
 
-			String collected = collectResults(jobSpec);
-
-			if (exitCode == 0) reporter.finished(jobId, collected);
+			if (exitCode == 0) reporter.finished(new CollectedResults(jobId, jobSpec, runningJob.workDir()));
 			else reporter.failed(jobId, "exit code " + exitCode);
-
-			return collected;
 		} catch (IOException failedToStart) {
 			reporter.failed(jobId, failedToStart.getMessage());
 		} catch (InterruptedException e) {
@@ -129,69 +122,68 @@ public final class JobExecutor {
 			runningJobs.remove(jobId);
 			acceptedJobs.decrementAndGet();
 		}
-		return "FAILED";
 	}
 
-	private Process start(JobId jobId, JobSpec jobSpec) throws IOException {
-		// todo: create the process
+	private RunningJob start(JobId jobId, JobSpec jobSpec) throws IOException {
+		//fixme can be left outside somewhere
+		Files.createDirectories(BASE_TEMP_DIR);
 
-		// todo: when working with actual files is required to write them firsty to some files i.e. use the Named
-		//  Pipe for IPC
+		// create job specific temp dir job_jobId form
+		Path jobDirPath = Files.createTempDirectory(BASE_TEMP_DIR, "job_%s_".formatted(jobId.value()));
+
+		// create logs dir
+		Path logs = jobDirPath.resolve("logs");
+		Files.createDirectories(logs);
+
+		// create path to files - files do not exist on disk yet (WRITING ONLY POSSIBLE)
+		Path stdoutFile = logs.resolve("stdout.log");
+		Path stderrFile = logs.resolve("stderr.log");
 
 		// prepare the command and arguments
-		String[] split = jobSpec.command().split(" ", 2);
 		String[] commandAndArgs = jobSpec.command().split(" ");
 
-		String command = split[0];
-		String[] args = split[1].split(" ");
-
-		// create the process with process builder
-		ProcessBuilder processBuilder = new ProcessBuilder(commandAndArgs);
+		// create the process with process builder - and run in separated directory (job specific directory)
+		ProcessBuilder processBuilder = new ProcessBuilder(commandAndArgs).directory(jobDirPath.toFile());
 		Process job = processBuilder.start();
 
-		//in order to prevent deadlock if processes are too verbose (to output and err channels) it's required to
-		// drain them
-
-		//todo: this is just example that work with in memory structure; in production required is to write the
-		// output to files
-		stdout = new Thread(() -> {
-			try (InputStream processOut = job.getInputStream()) {
-				byte[] buffer = new byte[8192];
+		// in order to prevent deadlock if processes are too verbose (to output and err channels) it's required to
+		// drain them to separate logger files; these files serve for testing purposes since the client has already
+		// requested files he wants to be delivered to him (creation of these files is conducted by the client and
+		// it's his responsibility)
+		Thread stdout = new Thread(() -> {
+			try (InputStream processOut = job.getInputStream();
+				 OutputStream fileOutput = Files.newOutputStream(stdoutFile)) {
+				byte[] buffer = new byte[16 * 1024];
 				int bytesRead;
 
 				while ((bytesRead = processOut.read(buffer)) != -1) {
-					tempOut.write(buffer, 0, bytesRead
+					fileOutput.write(buffer, 0, bytesRead
 					);
 				}
-			} catch (IOException e) {
-				throw new RuntimeException(e);
+			} catch (IOException ignore) {
 			}
 		});
-		stderr = new Thread(() -> {
-			try (InputStream processErr = job.getErrorStream()) {
-				byte[] buffer = new byte[8192];
+
+		Thread stderr = new Thread(() -> {
+			try (InputStream processErr = job.getErrorStream();
+				 OutputStream fileError = Files.newOutputStream(stderrFile)) {
+				byte[] buffer = new byte[16 * 1024];
 				int bytesRead;
 
 				while ((bytesRead = processErr.read(buffer)) != -1) {
-					tempErr.write(buffer, 0, bytesRead
+					fileError.write(buffer, 0, bytesRead
 					);
 				}
-			} catch (IOException e) {
-				throw new RuntimeException(e);
+			} catch (IOException ignored) {
 			}
 		});
 
-		// todo: use anonymous pipes to work with the stdout and stderr of process
 		stdout.start();
 		stderr.start();
 
-		return job;
+		return new RunningJob(job, jobDirPath, stdout, stderr);
 	}
 
-	private String collectResults(JobSpec spec) {
-		String err = tempErr.toString(Charset.defaultCharset());
-		String out = tempOut.toString(Charset.defaultCharset());
-
-		return err + out;
+	private record RunningJob(Process process, Path workDir, Thread stdout, Thread stderr) {
 	}
 }

@@ -7,6 +7,7 @@ import rs.ac.bg.etf.kdp.common.JobStatus;
 import java.io.Closeable;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
@@ -27,27 +28,25 @@ public final class JobContext {
 	private final JobId jobId;
 
 	/*
-	Tuple space for writing the data (tuples and templates). Lives on server.
+	Tuple space for writing the data (tuples and templates). Lives on server. REQUIRED ON FOR LINDA JOBS.
 	 */
 	private final TupleSpace tupleSpace = new TupleSpace();
 
 	/*
-	Connection(s) to outer workstation(s) that perform the job execution. Must be closed on terminal states and
-	disconnection of station(s). TODO: consider workstation context instead
+	Connection(s) to outer workstation(s) that perform the job execution - ONLY ON LINDA TASK. Must be closed on
+	terminal states and disconnection of station(s). TODO: consider workstation context instead
 	 */
-	private final Set<Closeable> connections = ConcurrentHashMap.newKeySet();
+	private final Set<CloseableMessageSink> connections = ConcurrentHashMap.newKeySet();
 	private final Set<String> assignedWorkstations = ConcurrentHashMap.newKeySet();
 
 	private final UserContext userContext;
 	private final JobSpec spec;
-
 	// required to save if job gets delegated from broken station to working one
 	private final Object statusLock = new Object();
-
 	// job counter received by server - serves no purpose, just required by specification of project
 	private final long jobNumber;
-
 	private final Instant arrivedAt = Instant.now();
+	private String failureReason;
 	private volatile Instant completedAt;
 
 	private volatile JobStatus status = JobStatus.READY;  // NOTE: volatile overkill if synchronization used
@@ -75,8 +74,16 @@ public final class JobContext {
 		return arrivedAt;
 	}
 
-	public Instant completedAt() {
-		return completedAt;
+	public Optional<Instant> completedAt() {
+		return Optional.of(completedAt);
+	}
+
+	public Optional<String> failureReason() {
+		return Optional.ofNullable(failureReason);
+	}
+
+	void recordFailure(String reason) {
+		this.failureReason = Objects.requireNonNull(reason);
 	}
 
 	public TupleSpace tupleSpace() {
@@ -91,13 +98,14 @@ public final class JobContext {
 		return Set.copyOf(assignedWorkstations);
 	}
 
-	public void assignNewWorkstation(String hostname) {
+	void assignNewWorkstation(String hostname) {
 		assignedWorkstations.add(Objects.requireNonNull(hostname));
 	}
 
 	public JobStatus status() {
 		return status;
 	}
+
 
 	/**
 	 * Method for trying to change the status if new status transition is allowed according to the
@@ -126,9 +134,23 @@ public final class JobContext {
 		}
 	}
 
-	// TODO: method for releasing the resources both closing the tuple and closing socket connections
+	/**
+	 * Releases everything this job holds. Both steps are required and neither substitutes for the
+	 * other: closing the tuple space wakes threads parked in {@code await()}, closing the
+	 * connections wakes threads blocked in a socket read.
+	 * <p>
+	 * If job performed is not Linda job that this method
+	 * performs nothing useful.
+	 * </p>
+	 */
+	void releaseResources() {
+		tupleSpace.close();
+		connections.forEach(CloseableMessageSink::close);
+		connections.clear();
+	}
 
-	public void removeFailedStation(Closeable socket, String workstationHostname) {
+
+	public void removeFailedStation(CloseableMessageSink socket, String workstationHostname) {
 		connections.remove(Objects.requireNonNull(socket));
 		assignedWorkstations.remove(Objects.requireNonNull(workstationHostname));
 	}

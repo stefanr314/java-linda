@@ -14,10 +14,14 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class JobExecutor {
 
 	private static final Path BASE_TEMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "workstation_jobs");
+	private static final Logger LOGGER = Logger.getLogger(JobExecutor.class.getName());
+
 	/*
 	This field serves as the counter of accepted jobs. This executor is the only writer so volatile is enough.
 	 */
@@ -30,6 +34,7 @@ public final class JobExecutor {
 	private final Map<JobId, Process> runningJobs = new ConcurrentHashMap<>();
 	private final JobReporter reporter;
 	private final ExecutorService workers;
+
 
 	public JobExecutor(int parallelismCapacity, JobReporter reporter, ExecutorService workers) {
 		this.parallelismCapacity = parallelismCapacity;
@@ -90,6 +95,11 @@ public final class JobExecutor {
 	 * running jobs.
 	 * </p>
 	 *
+	 * <p>
+	 * Obeys the rule of catching all possible exceptions being thrown since the future of executor submission is never
+	 * accessed. Otherwise, it just silently disappears once the thread terminates.
+	 * </p>
+	 *
 	 * @param jobId   id of job to supervise
 	 * @param jobSpec specification of job to supervise
 	 */
@@ -118,6 +128,9 @@ public final class JobExecutor {
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			reporter.failed(jobId, "Interrupted");
+		} catch (RuntimeException unexpected) {
+			LOGGER.log(Level.SEVERE, "Unexpected failure supervising " + jobId, unexpected);
+			reporter.failed(jobId, "Internal error: " + unexpected);
 		} finally {
 			runningJobs.remove(jobId);
 			acceptedJobs.decrementAndGet();
@@ -125,7 +138,6 @@ public final class JobExecutor {
 	}
 
 	private RunningJob start(JobId jobId, JobSpec jobSpec) throws IOException {
-		//fixme can be left outside somewhere
 		Files.createDirectories(BASE_TEMP_DIR);
 
 		// create job specific temp dir job_jobId form
@@ -135,7 +147,7 @@ public final class JobExecutor {
 		Path logs = jobDirPath.resolve("logs");
 		Files.createDirectories(logs);
 
-		// create path to files - files do not exist on disk yet (WRITING ONLY POSSIBLE)
+		// create path to files - files do not exist on disk yet
 		Path stdoutFile = logs.resolve("stdout.log");
 		Path stderrFile = logs.resolve("stderr.log");
 
@@ -157,8 +169,7 @@ public final class JobExecutor {
 				int bytesRead;
 
 				while ((bytesRead = processOut.read(buffer)) != -1) {
-					fileOutput.write(buffer, 0, bytesRead
-					);
+					fileOutput.write(buffer, 0, bytesRead);
 				}
 			} catch (IOException ignore) {
 			}
@@ -171,8 +182,7 @@ public final class JobExecutor {
 				int bytesRead;
 
 				while ((bytesRead = processErr.read(buffer)) != -1) {
-					fileError.write(buffer, 0, bytesRead
-					);
+					fileError.write(buffer, 0, bytesRead);
 				}
 			} catch (IOException ignored) {
 			}

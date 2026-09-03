@@ -8,6 +8,7 @@ import rs.ac.bg.etf.kdp.common.exceptions.JobNotPresentInRegistryException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -45,7 +46,7 @@ public final class JobRegistry {
 		jobLog.append(context);
 
 		LOGGER.log(Level.INFO, "Registered {0}", context);
-		return context;  // NOTE: handy later for the client return type
+		return context;
 	}
 
 	/**
@@ -108,24 +109,46 @@ public final class JobRegistry {
 	}
 
 	public boolean scheduled(JobId jobId) {
-		return transit(jobId, JobStatus.SCHEDULED);
+		return transit(jobId, JobStatus.SCHEDULED, (ignored) -> {
+		});
 	}
 
 	// method that should change status from scheduled to ready
 	public void requeued(JobId jobId) {
 		// TODO count the number of tries to assign the particular job to the station - just give up after hitting
 		//  the threshold
-		transit(jobId, JobStatus.READY);
+		transit(jobId, JobStatus.READY, job -> {
+			// todo implement
+		});
 	}
 
 	public void running(JobId jobId) {
-		// todo: ws info is required for performing the write to set connections.
-		transit(jobId, JobStatus.RUNNING);
+		transit(jobId, JobStatus.RUNNING, job -> {
+		});
+	}
+
+	public void finished(JobId jobId) {
+		transit(jobId, JobStatus.DONE, job -> {
+		});
+	}
+
+	/**
+	 * Method for reaching the terminal FAILED state of job. When job reaches this state it's required to release all
+	 * the resources of job (APPLICABLE ON LINDA ONLY JOBS).
+	 *
+	 * @param jobId  id of failed job.
+	 * @param reason reason of job failure.
+	 */
+	public void failed(JobId jobId, String reason) {
+		transit(jobId, JobStatus.FAILED, jobContext -> {
+			jobContext.recordFailure(reason);
+			jobContext.releaseResources();
+		});
 	}
 
 	// private method for changing the status of jobs -> must be thread safe -> delegated to stack confinement and
 	// atomic operations on collaborators
-	private boolean transit(JobId jobId, JobStatus next) {
+	private boolean transit(JobId jobId, JobStatus next, Consumer<JobContext> consumer) {
 		JobContext context = getContext(jobId);
 
 		if (!context.tryChangeStatus(next)) {
@@ -134,6 +157,7 @@ public final class JobRegistry {
 
 		// conduct some side effect logic before returning
 		jobLog.append(context);
+		consumer.accept(context);
 
 		return true;
 	}
@@ -146,8 +170,5 @@ public final class JobRegistry {
 		return context;
 	}
 
-	public void finished(JobId jobId) {
-		//todo IMPLEMENT ME
-		transit(jobId, JobStatus.DONE);
-	}
+
 }

@@ -75,8 +75,8 @@ public class WorkstationHandler implements ConnectionHandler {
 				context.reportAt(System.nanoTime());
 				context.send(new Pong(ping.timeNanos()));
 			} else if (message instanceof JobAccepted jobAccepted) {
-				LOGGER.info("Workstation: %s has accepted the job: %s. Job is not yet started".formatted(context.hostName(),
-						jobAccepted.jobId()));
+				LOGGER.info("Workstation: %s has accepted the job: %s. Job is not yet started"
+						.formatted(context.hostName(), jobAccepted.jobId()));
 			} else if (message instanceof JobRunning running) {
 				LOGGER.info("Job %s has been started on station: %s".formatted(running.jobId(), context.hostName()));
 				jobRegistry.running(running.jobId());  //todo: ws info is required to be passed?
@@ -98,19 +98,24 @@ public class WorkstationHandler implements ConnectionHandler {
 
 				LOGGER.info("Job %s has been finished. Output results to be received...".formatted(finished.jobId()));
 			} else if (message instanceof FileChunk fileChunk) {
-				// todo: create file receiver that knows to read the file chunk and upon reading sentinel value can
-				//  signal handler about it
 				try {
 					JobId jobId = fileChunk.jobId();
 					fileChunkReceiver.acceptChunkAndWrite(fileChunk, outputDirPath,
 							context.workstationInfo().osName()).ifPresent(path -> {
 						LOGGER.info("Job results for job %s have been collected. Job is DONE.".formatted(jobId));
 						jobRegistry.finished(jobId);
+						context.releaseSlot();
 					});
 				} catch (IOException e) {
-					// thse should not break the station down
+					// these should not break the station down
 					LOGGER.log(Level.SEVERE, "File IO system failed", e);
 				}
+			} else if (message instanceof JobFailed failed) {
+				LOGGER.log(Level.WARNING,
+						"Job with id: %s FAILED. REASON of failure: %s".formatted(failed.jobId().value(), failed.reason()));
+
+				jobRegistry.failed(failed.jobId(), failed.reason());
+				context.releaseSlot();
 			} else if (message instanceof Bye ignored) {
 				return;
 			} else {

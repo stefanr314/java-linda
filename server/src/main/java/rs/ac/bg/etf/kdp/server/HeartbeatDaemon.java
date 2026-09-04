@@ -83,6 +83,7 @@ public class HeartbeatDaemon implements AutoCloseable {
 
 			// send probes
 			try {
+				// FIXME - this can block and shutdown all the station due to SO_TIMEOUT on stations RCV bfr
 				workstation.send(new Ping(System.nanoTime()));
 			} catch (IOException e) {
 				LOGGER.log(Level.WARNING, "Unable to send message to the workstation: " + workstation.hostName() +

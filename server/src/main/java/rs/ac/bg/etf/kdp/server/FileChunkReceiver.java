@@ -2,19 +2,16 @@ package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.protocol.FileChunk;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
-public final class FileChunkReceiver {
+public abstract class FileChunkReceiver {
 
 	private final static Logger LOGGER = Logger.getLogger(FileChunkReceiver.class.getName());
 
@@ -34,32 +31,81 @@ public final class FileChunkReceiver {
 		return outputStream;
 	}
 
-	public Optional<? extends Path> acceptChunkAndWrite(FileChunk chunk, Path writeToPath, String sentFromOs) throws IOException {
-		String targetFileSeparator = sentFromOs.toLowerCase(Locale.ROOT).contains("windows") ? "\\" : "/";
-		String normalizedPath = chunk.fileName().replace(targetFileSeparator, File.separator);
 
-		// helper that checks whether the file is logs dir
-		Path helperPath;
-		if ((helperPath = Path.of(normalizedPath).getParent()) != null) {
-			if (helperPath.startsWith("logs")) {
-				Files.createDirectories(writeToPath.resolve(helperPath));
-			}
-		}
+	/**
+	 * Method for accepting the file chunks and transferring them to the actual files on server.
+	 * <p>
+	 * Path provided must contain the actual dir created on path. Creation of this dir is the responsibility of
+	 * adequate handler that can detect the signal from client/station to retriver input/result files. These
+	 * signals must be provided prior to the receiving the file chunk object -> TCP guarantees this.
+	 * </p>
+	 *
+	 * @param chunk       an object representing the actual file chunk data being sent with metainformation.
+	 * @param writeToPath path to dir in which the files will be saved.
+	 * @return optional value wrapper - upon receiving sentinel value the path to stored file on disk; otherwise null.
+	 * @throws IOException upon working with files.
+	 */
+	public Optional<? extends Path> acceptChunkAndWrite(FileChunk chunk, Path writeToPath) throws IOException {
+		Objects.requireNonNull(chunk);
+		Objects.requireNonNull(writeToPath);
 
-		// create path to the filename - writeToPath.resolve(chunk.filename())
-		Path filePath = writeToPath.resolve(normalizedPath).normalize();
+		// calculate filename path
+		Path filePath = calculatePath(chunk.fileName(), writeToPath);
+
 		// open the stream to it - create the new stream if filename has not yet been seen in map
 		OutputStream out = openFileDescriptorsMap.computeIfAbsent(filePath, FileChunkReceiver::apply);
 
 		// check whether the chunk is last for filename - return path to the filename if so otherwise return empty
-		if (chunk.last()) {
+		if (chunk.last()) { // last chunk holds no value
 			openFileDescriptorsMap.remove(filePath).close();
 			return Optional.of(filePath);
 		} else {
-			// write the chunk of data (bytes[]) (DO THE RESEARCH ON HOW FREQUENTLY I WRITE TO FILE WITH THIS APPROACH)
 			out.write(chunk.data());
+
 			// do not close the file leave it open
 			return Optional.empty();
 		}
 	}
+
+	/**
+	 * Method for closing all open file descriptors (output streams) and deleting the provided dir. Dir will most
+	 * probably hold some children values and recursive deletion is required by walking the dir tree.
+	 *
+	 * @param jobDirToDelete root dir path to which stream of paths is resolved to.
+	 */
+	public void terminateAndDelete(Path jobDirToDelete) {
+		for (OutputStream out : openFileDescriptorsMap.values()) {
+			try {
+				out.close();
+			} catch (IOException e) {
+				// ignored
+			}
+		}
+
+		// delete dirs - i cannot delete with writeToPath.getParent().getPara
+		try (Stream<Path> walk = Files.walk(jobDirToDelete);) {
+			walk.sorted(Comparator.reverseOrder())
+					.forEach(path -> {
+						try {
+							Files.delete(path);
+						} catch (IOException e) {
+							LOGGER.log(Level.WARNING, "Exception upon trying to delete the file on path: " + path, e);
+						}
+					});
+		} catch (IOException e) {
+			LOGGER.log(Level.WARNING, "Exception when deleting the abandoned job dir", e);
+		}
+
+		openFileDescriptorsMap.clear();
+	}
+
+	/**
+	 * Method for calculating the path to files (filenames) to which the writing output stream is opened.
+	 *
+	 * @param chunkFilename filename consisted in chunk.
+	 * @param basePath      base path of dire where the filename is to be stored. Must be created prior to writing.
+	 * @return path on which the file stream is to be opened.
+	 * @throws IOException upon working with files.
+	 */
+	public abstract Path calculatePath(String chunkFilename, Path basePath) throws IOException;
 }

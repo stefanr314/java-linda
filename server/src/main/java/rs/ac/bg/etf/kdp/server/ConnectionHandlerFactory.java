@@ -6,6 +6,7 @@ import rs.ac.bg.etf.kdp.common.protocol.LindaHello;
 import rs.ac.bg.etf.kdp.common.protocol.WorkstationHello;
 
 import java.io.ObjectInput;
+import java.nio.file.Path;
 
 /**
  * Simple Factory for generation of connection handlers. This pattern does not resemble Factory Pattern but rather a
@@ -20,6 +21,8 @@ import java.io.ObjectInput;
  * @author stefanr
  */
 public class ConnectionHandlerFactory {
+
+	private static final Path BASE_DIR_PATH = Path.of(System.getProperty("java.io.tmpdir"), "server_jobs");
 
 	private final WorkstationRegistrator workstationRegistrator;
 	private final JobRegistry jobRegistry;
@@ -46,9 +49,9 @@ public class ConnectionHandlerFactory {
 
 		if (hello instanceof WorkstationHello wsHello) {
 			handler = new WorkstationHandler(messageSink, in, workstationRegistrator, wsHello.wsInfo(), jobRegistry,
-					scheduler);
+					scheduler, BASE_DIR_PATH);
 		} else if (hello instanceof ClientHello clHello) {
-			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler);
+			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler, BASE_DIR_PATH);
 		} else if (hello instanceof LindaHello lindaHello) {
 			System.out.println("Linda client connected " + lindaHello.jobId());
 		}

@@ -6,10 +6,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
-import java.util.logging.Level;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.logging.Logger;
-import java.util.stream.Stream;
 
 public abstract class FileChunkReceiver {
 
@@ -68,32 +69,16 @@ public abstract class FileChunkReceiver {
 	}
 
 	/**
-	 * Method for closing all open file descriptors (output streams) and deleting the provided dir. Dir will most
-	 * probably hold some children values and recursive deletion is required by walking the dir tree.
+	 * Method for closing all open file descriptors (output streams) and clearing the map of open streams of some paths.
 	 *
-	 * @param jobDirToDelete root dir path to which stream of paths is resolved to.
 	 */
-	public void terminateAndDelete(Path jobDirToDelete) {
+	public void abandon() {
 		for (OutputStream out : openFileDescriptorsMap.values()) {
 			try {
 				out.close();
 			} catch (IOException e) {
 				// ignored
 			}
-		}
-
-		// delete dirs - i cannot delete with writeToPath.getParent().getPara
-		try (Stream<Path> walk = Files.walk(jobDirToDelete);) {
-			walk.sorted(Comparator.reverseOrder())
-					.forEach(path -> {
-						try {
-							Files.delete(path);
-						} catch (IOException e) {
-							LOGGER.log(Level.WARNING, "Exception upon trying to delete the file on path: " + path, e);
-						}
-					});
-		} catch (IOException e) {
-			LOGGER.log(Level.WARNING, "Exception when deleting the abandoned job dir", e);
 		}
 
 		openFileDescriptorsMap.clear();

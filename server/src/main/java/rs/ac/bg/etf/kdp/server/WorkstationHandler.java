@@ -99,8 +99,11 @@ public class WorkstationHandler implements ConnectionHandler {
 				outputDirPath = baseDirPath.resolve("job_" + finished.jobId().value()).resolve("output");
 
 				// if does not exist create the new Dir
-				Files.createDirectories(outputDirPath); // note: breaking the connection on this???
-
+				try {
+					Files.createDirectories(outputDirPath);
+				} catch (IOException diskException) {
+					// todo: handle me
+				}
 				LOGGER.info("Job %s has been finished. Output results to be received...".formatted(finished.jobId()));
 			} else if (message instanceof FileChunk fileChunk) {
 				try {

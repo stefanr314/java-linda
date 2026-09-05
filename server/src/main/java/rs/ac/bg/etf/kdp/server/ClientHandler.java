@@ -1,12 +1,12 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.DirCreator;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -91,13 +91,12 @@ public class ClientHandler implements ConnectionHandler {
 				inputDir = jobDir.resolve("input");
 
 				try {
-					Files.createDirectories(jobJarDir);
-					Files.createDirectories(inputDir);
+					DirCreator.createDirs(jobJarDir, inputDir);
 				} catch (IOException diskException) {
 
 					LOGGER.log(Level.WARNING, "Creation of dir failed.", diskException);
 					userContext.send(new JobRejected(job.jobId(),
-							"Job was rejected due to error on server. Please try again."));
+							"Job was rejected due to error on server. Please try again later."));
 					jobRegistry.remove(job.jobId());
 
 					continue;
@@ -105,9 +104,6 @@ public class ClientHandler implements ConnectionHandler {
 
 				// send the confirmation
 				userContext.send(new JobRegistered(job.jobId()));
-
-				// call the delegator/scheduler in help
-				scheduler.scheduleReadyJobs();
 			} else if (received instanceof JobJarStart jobJar) {
 
 				jobJarName = jobJar.jobJarFilename();
@@ -117,17 +113,12 @@ public class ClientHandler implements ConnectionHandler {
 
 				if (!jobSpec.inputFiles().contains(fileChunk.fileName())) {
 
-					// close open files
-					if (jobDir != null)
-						fileReceiver.terminateAndDelete(jobDir);
-
-					// remove job
-					jobRegistry.remove(fileChunk.jobId());
-
-					// constraint broken - declare job rejected
-					userContext.send(new JobRejected(fileChunk.jobId(),
+					internalFailJobRejection(
+							userContext,
+							fileChunk,
 							"Constraint on input files broken. Job is " +
-									"rejected and cleaned from server."));
+									"rejected and cleaned from server."
+					);
 
 					continue;
 				}
@@ -136,12 +127,16 @@ public class ClientHandler implements ConnectionHandler {
 						LOGGER.info("File received and saved on: " + filepath);
 						// todo: anything else???
 					});
+					
+					userContext.send(new FileChunkAck());  // send ack so the client can continue file chunk sending
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.", diskException);
-					if (jobDir != null)
-						fileReceiver.terminateAndDelete(jobDir);
-					jobRegistry.remove(fileChunk.jobId());
-					userContext.send(new JobRejected(fileChunk.jobId(), "Server error occurred. Please try again."));
+
+					internalFailJobRejection(
+							userContext,
+							fileChunk,
+							"Server error occurred whilest working with files. Please try again."
+					);
 				}
 			} else if (received instanceof JobJarEnd jobJarEnd) {
 
@@ -153,6 +148,9 @@ public class ClientHandler implements ConnectionHandler {
 
 				LOGGER.fine("All input file bytes have been received.");
 				// todo: change status to ready
+
+				// call the delegator/scheduler in help
+				scheduler.scheduleReadyJobs();
 //			} else if (received instanceof CheckJobResultCommand jobResult) {
 //				// check the job result if status done
 //			} else if (received instanceof CheckJobStatusCommand checkJobStatusCommand) {
@@ -175,5 +173,21 @@ public class ClientHandler implements ConnectionHandler {
 				messageSink.send(new Failure("Unknown message received: " + received.getClass()));
 			}
 		}
+	}
+
+	private void internalFailJobRejection(UserContext userContext, FileChunk fileChunk, String reason) throws IOException {
+		// close open files
+		fileReceiver.abandon();
+
+		// delete job dir and everything inside
+		if (jobDir != null)
+			DirCreator.recursivelyDeleteDirOnPath(jobDir);
+
+		// remove job
+		jobRegistry.remove(fileChunk.jobId());
+
+		// constraint broken - declare job rejected
+		userContext.send(new JobRejected(fileChunk.jobId(),
+				reason));
 	}
 }

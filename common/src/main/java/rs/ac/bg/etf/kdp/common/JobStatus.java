@@ -10,6 +10,11 @@ import java.util.Set;
 public enum JobStatus {
 
 	/**
+	 * Receiving job status files. Job is not ready to be scheduled to station.
+	 */
+	RECEIVING,
+
+	/**
 	 * Submitted, waiting to be assigned a workstation.
 	 */
 	READY,
@@ -40,6 +45,7 @@ public enum JobStatus {
 	ABORTED;
 
 	static {
+		RECEIVING.possibleNext = EnumSet.of(JobStatus.READY);
 		READY.possibleNext = EnumSet.of(JobStatus.SCHEDULED, JobStatus.ABORTED);
 		SCHEDULED.possibleNext = EnumSet.of(JobStatus.RUNNING, JobStatus.FAILED, JobStatus.ABORTED, JobStatus.READY);
 

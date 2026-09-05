@@ -1,5 +1,6 @@
 package rs.ac.bg.etf.kdp.workstation;
 
+import rs.ac.bg.etf.kdp.common.DirCreator;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
 
@@ -72,7 +73,7 @@ public final class JobExecutor {
 	}
 
 	/**
-	 * Called from the control thread on AbortJob.
+	 * Called from the control thread on AbortJob.Note WIP.
 	 */
 	public void abort(JobId jobId) {
 		Process process = runningJobs.get(jobId);
@@ -138,14 +139,14 @@ public final class JobExecutor {
 	}
 
 	private RunningJob start(JobId jobId, JobSpec jobSpec) throws IOException {
-		Files.createDirectories(BASE_TEMP_DIR);
+		DirCreator.createDir(BASE_TEMP_DIR);
 
 		// create job specific temp dir job_jobId form
 		Path jobDirPath = Files.createTempDirectory(BASE_TEMP_DIR, "job_%s_".formatted(jobId.value()));
 
 		// create logs dir
 		Path logs = jobDirPath.resolve("logs");
-		Files.createDirectories(logs);
+		DirCreator.createDir(logs);
 
 		// create path to files - files do not exist on disk yet
 		Path stdoutFile = logs.resolve("stdout.log");

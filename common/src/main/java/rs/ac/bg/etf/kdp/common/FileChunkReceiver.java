@@ -1,4 +1,4 @@
-package rs.ac.bg.etf.kdp.server;
+package rs.ac.bg.etf.kdp.common;
 
 import rs.ac.bg.etf.kdp.common.protocol.FileChunk;
 

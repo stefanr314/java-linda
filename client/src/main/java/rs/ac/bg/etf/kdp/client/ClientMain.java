@@ -68,7 +68,7 @@ public final class ClientMain implements AutoCloseable {
 
 			LOGGER.info("Submitted " + jobId + ", watching progress...");
 
-			client.printProgressUntilQuiet();
+			client.printProgressUntilQuiet(jobId);
 		} catch (IOException | ClassNotFoundException e) {
 			LOGGER.log(Level.SEVERE, "Client failed", e);
 		}
@@ -119,8 +119,9 @@ public final class ClientMain implements AutoCloseable {
 	 * it can close this connection immediately after submitting.
 	 * </p>
 	 */
-	public void printProgressUntilQuiet() throws ClassNotFoundException {
+	public void printProgressUntilQuiet(JobId jobId) throws ClassNotFoundException {
 		try {
+			send(new InputFilesEnd(jobId));
 			for (; ; ) {
 				Object received = in.readObject();
 				if (received instanceof Bye) return;

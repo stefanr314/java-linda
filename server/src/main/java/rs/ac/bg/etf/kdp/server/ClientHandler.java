@@ -1,8 +1,6 @@
 package rs.ac.bg.etf.kdp.server;
 
-import rs.ac.bg.etf.kdp.common.DirCreator;
-import rs.ac.bg.etf.kdp.common.JobId;
-import rs.ac.bg.etf.kdp.common.JobSpec;
+import rs.ac.bg.etf.kdp.common.*;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
@@ -85,7 +83,8 @@ public class ClientHandler implements ConnectionHandler {
 						(jobSpec = jobSubmit.jobSpec())
 				);
 
-				jobDir = baseDirPath.resolve("job_" + job.jobId());
+				jobDir = baseDirPath.resolve("job_" + job.jobId().value());
+
 				jobJarDir = jobDir.resolve("job");
 				inputDir = jobDir.resolve("input");
 

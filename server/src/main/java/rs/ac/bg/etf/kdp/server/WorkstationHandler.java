@@ -23,7 +23,6 @@ import java.util.logging.Logger;
 public class WorkstationHandler implements ConnectionHandler {
 
 	private final static Logger LOGGER = Logger.getLogger(WorkstationHandler.class.getName());
-	private static final Path BASE_DIR_PATH = Path.of(System.getProperty("java.io.tmpdir"), "server_jobs");
 
 	private final CloseableMessageSink messageSink;
 	private final ObjectInput in;
@@ -32,18 +31,24 @@ public class WorkstationHandler implements ConnectionHandler {
 	private final JobRegistry jobRegistry;
 	private final Scheduler scheduler;
 	private final FileChunkReceiver fileChunkReceiver;
+	private final Path baseDirPath;
+
 	private Path outputDirPath;
 
 	public WorkstationHandler(CloseableMessageSink messageSink, ObjectInput in,
 							  WorkstationRegistrator registrator,
-							  WorkstationInfo info, JobRegistry jobRegistry, Scheduler scheduler) {
+							  WorkstationInfo info, JobRegistry jobRegistry, Scheduler scheduler, Path baseDirPath) {
 		this.messageSink = messageSink;
 		this.in = in;
 		this.registrator = registrator;
 		this.info = info;
+
 		this.jobRegistry = jobRegistry;
+
 		this.scheduler = scheduler;
-		this.fileChunkReceiver = new FileChunkReceiver();
+
+		this.fileChunkReceiver = new StationResultsReceiver(info.osName());
+		this.baseDirPath = baseDirPath;
 	}
 
 	@Override
@@ -79,7 +84,7 @@ public class WorkstationHandler implements ConnectionHandler {
 						.formatted(context.hostName(), jobAccepted.jobId()));
 			} else if (message instanceof JobRunning running) {
 				LOGGER.info("Job %s has been started on station: %s".formatted(running.jobId(), context.hostName()));
-				jobRegistry.running(running.jobId());  //todo: ws info is required to be passed?
+				jobRegistry.running(running.jobId());
 			} else if (message instanceof JobRejected rejected) {
 				// station rejected the job - cleanup must be conducted
 				// release the slot of this station
@@ -91,17 +96,19 @@ public class WorkstationHandler implements ConnectionHandler {
 				// try rescheduling it back
 				scheduler.scheduleReadyJobs();
 			} else if (message instanceof JobFinished finished) {
-				outputDirPath = BASE_DIR_PATH.resolve("job_" + finished.jobId().value()).resolve("output");
+				outputDirPath = baseDirPath.resolve("job_" + finished.jobId().value()).resolve("output");
 
 				// if does not exist create the new Dir
-				Files.createDirectories(outputDirPath);
-
+				try {
+					Files.createDirectories(outputDirPath);
+				} catch (IOException diskException) {
+					// todo: handle me
+				}
 				LOGGER.info("Job %s has been finished. Output results to be received...".formatted(finished.jobId()));
 			} else if (message instanceof FileChunk fileChunk) {
 				try {
 					JobId jobId = fileChunk.jobId();
-					fileChunkReceiver.acceptChunkAndWrite(fileChunk, outputDirPath,
-							context.workstationInfo().osName()).ifPresent(path -> {
+					fileChunkReceiver.acceptChunkAndWrite(fileChunk, outputDirPath).ifPresent(path -> {
 						LOGGER.info("Job results for job %s have been collected. Job is DONE.".formatted(jobId));
 						jobRegistry.finished(jobId);
 						context.releaseSlot();

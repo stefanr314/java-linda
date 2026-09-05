@@ -113,7 +113,7 @@ public final class JobRegistry {
 		});
 	}
 
-	// method that should change status from scheduled to ready
+
 	public void requeued(JobId jobId) {
 		// TODO count the number of tries to assign the particular job to the station - just give up after hitting
 		//  the threshold

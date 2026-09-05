@@ -94,7 +94,7 @@ public class ClientHandler implements ConnectionHandler {
 				} catch (IOException diskException) {
 
 					LOGGER.log(Level.WARNING, "Creation of dir failed.", diskException);
-					userContext.send(new JobRejected(job.jobId(),
+					userContext.send(new JobFilesFailure(job.jobId(),
 							"Job was rejected due to error on server. Please try again later."));
 					jobRegistry.remove(job.jobId());
 
@@ -189,7 +189,7 @@ public class ClientHandler implements ConnectionHandler {
 		jobRegistry.remove(fileChunk.jobId());
 
 		// constraint broken - declare job rejected
-		userContext.send(new JobRejected(fileChunk.jobId(),
+		userContext.send(new JobFilesFailure(fileChunk.jobId(),
 				reason));
 	}
 }

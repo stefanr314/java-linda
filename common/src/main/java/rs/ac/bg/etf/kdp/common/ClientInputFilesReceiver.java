@@ -1,4 +1,4 @@
-package rs.ac.bg.etf.kdp.server;
+package rs.ac.bg.etf.kdp.common;
 
 import java.io.IOException;
 import java.nio.file.Path;

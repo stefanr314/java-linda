@@ -1,12 +1,10 @@
 package rs.ac.bg.etf.kdp.server;
 
-import rs.ac.bg.etf.kdp.common.JobId;
-import rs.ac.bg.etf.kdp.common.WorkstationInfo;
+import rs.ac.bg.etf.kdp.common.*;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -96,13 +94,16 @@ public class WorkstationHandler implements ConnectionHandler {
 				// try rescheduling it back
 				scheduler.scheduleReadyJobs();
 			} else if (message instanceof JobFinished finished) {
+				// job dir at this point will already exist just create the output dir
 				outputDirPath = baseDirPath.resolve("job_" + finished.jobId().value()).resolve("output");
 
-				// if does not exist create the new Dir
 				try {
-					Files.createDirectories(outputDirPath);
+					DirCreator.createDir(outputDirPath);
 				} catch (IOException diskException) {
 					// todo: handle me
+					LOGGER.log(Level.WARNING, "Disk exception upon creating output dir.", diskException);
+
+					// send back info to station to stop sending more chunks
 				}
 				LOGGER.info("Job %s has been finished. Output results to be received...".formatted(finished.jobId()));
 			} else if (message instanceof FileChunk fileChunk) {

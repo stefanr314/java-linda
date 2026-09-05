@@ -14,10 +14,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 class WorkstationRegistratorTest {
 
 	private final WorkstationRegistry registry = new WorkstationRegistry();
+	private final JobLog jobLog = new JobLog();
+	private final JobRegistry jobRegistry = new JobRegistry(jobLog);
 	private WorkstationContextTest.FakeMessageSink fakeSink;
 	private WorkstationRegistrator registrator;
-	private JobLog jobLog = new JobLog();
-	private final JobRegistry jobRegistry = new JobRegistry(jobLog);
 
 	@BeforeEach
 	void setup() {

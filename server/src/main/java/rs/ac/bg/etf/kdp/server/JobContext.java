@@ -49,7 +49,7 @@ public final class JobContext {
 	private String failureReason;
 	private volatile Instant completedAt;
 
-	private volatile JobStatus status = JobStatus.READY;  // NOTE: volatile overkill if synchronization used
+	private volatile JobStatus status = JobStatus.RECEIVING;  // NOTE: volatile overkill if synchronization used
 
 	public JobContext(JobId jobId, UserContext userContext, JobSpec spec, long jobCounter) {
 		this.jobId = jobId;

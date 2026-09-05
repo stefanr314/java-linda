@@ -96,23 +96,45 @@ public final class JobRegistry {
 				.toList();
 	}
 
-
+	/**
+	 * Method for assigning the new workstation to the job. Called upon successfully acquiring free slot on station.
+	 *
+	 * @param jobId    id of job that gets assigned to the station.
+	 * @param hostName name of workstation host.
+	 */
 	public void assignedTo(JobId jobId, String hostName) {
 		getContext(jobId).assignNewWorkstation(hostName);
 		jobLog.append(getContext(jobId));
 	}
 
-
-	// this method has some side effects
-	public void aborted(JobId jobId) {
-		// performing the cleanup
+	/**
+	 * Method for state transition from {@link JobStatus#RECEIVING} to {@link JobStatus#READY}.
+	 * <p>This is call is mandatory when all the input files have been received and the job is ready to be scheduled.</p>
+	 *
+	 * @param jobId id of job that become {@link JobStatus#READY}.
+	 */
+	public void ready(JobId jobId) {
+		transit(jobId, JobStatus.READY, ignored -> {
+		});
 	}
 
+	/**
+	 * Method for changing the state to scheduled. Scheduler has responsibility to call this method upon finding free
+	 * ws.
+	 * <p>
+	 * This method returns boolean value depicting the successful status of transition. This is required in order
+	 * for concurrent schedule calls to work and serves as early return if job is already atomically set to
+	 * {@link JobStatus#SCHEDULED} state; otherwise the same job might get run on multiple stations (job
+	 * execution duplication).
+	 * </p>
+	 *
+	 * @param jobId id of job to be scheduled
+	 * @return outcome of operation of trying to transit to {@link JobStatus#SCHEDULED} state.
+	 */
 	public boolean scheduled(JobId jobId) {
 		return transit(jobId, JobStatus.SCHEDULED, (ignored) -> {
 		});
 	}
-
 
 	public void requeued(JobId jobId) {
 		// TODO count the number of tries to assign the particular job to the station - just give up after hitting
@@ -122,11 +144,23 @@ public final class JobRegistry {
 		});
 	}
 
+	/**
+	 * Method for setting the job to {@link JobStatus#RUNNING} state.
+	 *
+	 * @param jobId id of job that transits to {@link JobStatus#RUNNING} state.
+	 */
 	public void running(JobId jobId) {
 		transit(jobId, JobStatus.RUNNING, job -> {
 		});
 	}
 
+	/**
+	 * Method for setting the job to {@link JobStatus#DONE} state.
+	 * <p>Results will be saved on temp dir on server side from which can be sent to client. State transition is
+	 * final act in this chain of job result retrieval.</p>
+	 *
+	 * @param jobId id of job that transits to {@link JobStatus#DONE} state.
+	 */
 	public void finished(JobId jobId) {
 		transit(jobId, JobStatus.DONE, job -> {
 		});
@@ -144,6 +178,11 @@ public final class JobRegistry {
 			jobContext.recordFailure(reason);
 			jobContext.releaseResources();
 		});
+	}
+
+	// this method has some side effects
+	public void aborted(JobId jobId) {
+		// todo: implement
 	}
 
 	// private method for changing the status of jobs -> must be thread safe -> delegated to stack confinement and

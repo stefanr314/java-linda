@@ -79,7 +79,6 @@ public class ClientHandler implements ConnectionHandler {
 			if (received instanceof JobSubmitCommand jobSubmit) {
 
 				// firstly add it to the job registry - create the job id.
-				// fixme INTRODUCE NEW STATE RECEIVING...
 				JobContext job = jobRegistry.register(
 						new JobId(UUID.randomUUID().toString()),
 						userContext,
@@ -122,12 +121,13 @@ public class ClientHandler implements ConnectionHandler {
 
 					continue;
 				}
+
 				try {
 					fileReceiver.acceptChunkAndWrite(fileChunk, workDir).ifPresent(filepath -> {
 						LOGGER.info("File received and saved on: " + filepath);
 						// todo: anything else???
 					});
-					
+
 					userContext.send(new FileChunkAck());  // send ack so the client can continue file chunk sending
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.", diskException);
@@ -144,10 +144,12 @@ public class ClientHandler implements ConnectionHandler {
 			} else if (received instanceof InputFilesStart ignored) {
 
 				LOGGER.fine("Receiving input files...");
-			} else if (received instanceof InputFilesEnd ignored) {
+			} else if (received instanceof InputFilesEnd filesReceived) {
 
-				LOGGER.fine("All input file bytes have been received.");
-				// todo: change status to ready
+				LOGGER.fine("All input file bytes have been received for job:" + filesReceived.jobId().value());
+
+				// transit state to READY
+				jobRegistry.ready(filesReceived.jobId());
 
 				// call the delegator/scheduler in help
 				scheduler.scheduleReadyJobs();

@@ -24,9 +24,7 @@ public class ClientHandler implements ConnectionHandler {
 	private final Path baseDirPath;
 
 	private Path jobDir;
-	private Path jobJarDir;
 	private Path inputDir;
-	private String jobJarName;
 	private JobSpec jobSpec;
 
 	public ClientHandler(CloseableMessageSink messageSink,
@@ -85,14 +83,13 @@ public class ClientHandler implements ConnectionHandler {
 
 				jobDir = baseDirPath.resolve("job_" + job.jobId().value());
 
-				jobJarDir = jobDir.resolve("job");
 				inputDir = jobDir.resolve("input");
 
 				try {
-					DirCreator.createDirs(jobJarDir, inputDir);
+					DirCreator.createDir(inputDir);
 				} catch (IOException diskException) {
 
-					LOGGER.log(Level.WARNING, "Creation of dir failed.", diskException);
+					LOGGER.log(Level.WARNING, "Creation of input dir failed.", diskException);
 					userContext.send(new JobFilesFailure(job.jobId(),
 							"Job was rejected due to error on server. Please try again later."));
 					jobRegistry.remove(job.jobId());
@@ -102,16 +99,13 @@ public class ClientHandler implements ConnectionHandler {
 
 				// send the confirmation
 				userContext.send(new JobRegistered(job.jobId()));
-			} else if (received instanceof JobJarStart jobJar) {
-
-				jobJarName = jobJar.jobJarFilename();
 			} else if (received instanceof FileChunk fileChunk) {
 
-				Path workDir = fileChunk.fileName().equals(jobJarName) ? jobJarDir : inputDir;
+				boolean fileChunkContainsJobFilename = fileChunk.fileName().equals(jobSpec.jobFilename());
 
-				if (!jobSpec.inputFiles().contains(fileChunk.fileName())) {
+				if (!jobSpec.inputFiles().contains(fileChunk.fileName()) && !fileChunkContainsJobFilename) {
 
-					internalFailJobRejection(
+					internalFileRejection(
 							userContext,
 							fileChunk,
 							"Constraint on input files broken. Job is " +
@@ -122,24 +116,21 @@ public class ClientHandler implements ConnectionHandler {
 				}
 
 				try {
-					fileReceiver.acceptChunkAndWrite(fileChunk, workDir).ifPresent(filepath -> {
+					fileReceiver.acceptChunkAndWrite(fileChunk, inputDir).ifPresent(filepath -> {
 						LOGGER.info("File received and saved on: " + filepath);
 						// todo: anything else???
 					});
 
-					userContext.send(new FileChunkAck());  // send ack so the client can continue file chunk sending
+					userContext.send(new FileChunkAck());  // fixme: refactor since its redundant
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.", diskException);
 
-					internalFailJobRejection(
+					internalFileRejection(
 							userContext,
 							fileChunk,
 							"Server error occurred whilest working with files. Please try again."
 					);
 				}
-			} else if (received instanceof JobJarEnd jobJarEnd) {
-
-				LOGGER.fine("All job jar bytes received for job: " + jobJarEnd.jobId());
 			} else if (received instanceof InputFilesStart ignored) {
 
 				LOGGER.fine("Receiving input files...");
@@ -176,7 +167,7 @@ public class ClientHandler implements ConnectionHandler {
 		}
 	}
 
-	private void internalFailJobRejection(UserContext userContext, FileChunk fileChunk, String reason) throws IOException {
+	private void internalFileRejection(UserContext userContext, FileChunk fileChunk, String reason) throws IOException {
 		// close open files
 		fileReceiver.abandon();
 

@@ -9,7 +9,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,14 +19,19 @@ import java.util.logging.Logger;
 
 public final class JobExecutor {
 
-	private static final Path BASE_TEMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "workstation_jobs");
 	private static final Logger LOGGER = Logger.getLogger(JobExecutor.class.getName());
 
 	/*
-	This field serves as the counter of accepted jobs. This executor is the only writer so volatile is enough.
+	This field serves as the counter of accepted jobs. Incremented by only one thread and decremented by multiple.
 	 */
 	private final AtomicInteger acceptedJobs = new AtomicInteger();
 	private final int parallelismCapacity;
+
+	/*
+	Map for remembering the job specification between the initial call for job dispatch and receiving the sentinel
+	value depicting the input files transfer end.
+	 */
+	private final Map<JobId, JobSpec> jobSpecification = new ConcurrentHashMap<>();
 
 	/*
 	Map of running jobs so they can be manipulated on different occasions
@@ -66,10 +70,35 @@ public final class JobExecutor {
 		if (acceptedJobs.get() >= parallelismCapacity) return false;
 		acceptedJobs.incrementAndGet();
 
-		// run the job
-		workers.submit(() -> supervise(jobId, jobSpec));
+		// save the jobId and jobSpec somewhere
+		jobSpecification.put(jobId, jobSpec);
 
+		// just return true and await for all input chunks to be received
 		return true;
+	}
+
+	/**
+	 * Method for starting the execution of job upon all input files have been received.
+	 *
+	 * @param jobId id of job to be executed
+	 */
+	public void execute(JobId jobId, Path jobDirPath) {
+		Objects.requireNonNull(jobId);
+
+		JobSpec jobSpec = jobSpecification.get(jobId);
+		// run the job
+		workers.submit(() -> supervise(jobId, jobSpec, jobDirPath));
+	}
+
+	/**
+	 * Release all occupied resources prior to execution of job i.e. in input file transfer phase.
+	 */
+	void jobReleaser(JobId jobId) {
+		Objects.requireNonNull(jobId);
+
+		jobSpecification.remove(jobId);
+
+		acceptedJobs.decrementAndGet();
 	}
 
 	/**
@@ -101,14 +130,15 @@ public final class JobExecutor {
 	 * accessed. Otherwise, it just silently disappears once the thread terminates.
 	 * </p>
 	 *
-	 * @param jobId   id of job to supervise
-	 * @param jobSpec specification of job to supervise
+	 * @param jobId      id of job to supervise.
+	 * @param jobSpec    specification of job to supervise.
+	 * @param jobDirPath path to job directory.
 	 */
-	private void supervise(JobId jobId, JobSpec jobSpec) {
+	private void supervise(JobId jobId, JobSpec jobSpec, Path jobDirPath) {
 		RunningJob runningJob;
 		try {
 			// delegate the creation of job
-			runningJob = start(jobId, jobSpec);
+			runningJob = start(jobId, jobSpec, jobDirPath);
 
 			Process process = runningJob.process();
 
@@ -122,7 +152,7 @@ public final class JobExecutor {
 			runningJob.stderr().join(2000);
 			runningJob.stdout().join(2000);
 
-			if (exitCode == 0) reporter.finished(new CollectedResults(jobId, jobSpec, runningJob.workDir()));
+			if (exitCode == 0) reporter.finished(new CollectedResults(jobId, jobSpec, runningJob.resultDir()));
 			else reporter.failed(jobId, "exit code " + exitCode);
 		} catch (IOException failedToStart) {
 			reporter.failed(jobId, failedToStart.getMessage());
@@ -134,25 +164,24 @@ public final class JobExecutor {
 			reporter.failed(jobId, "Internal error: " + unexpected);
 		} finally {
 			runningJobs.remove(jobId);
+			jobSpecification.remove(jobId);
 			acceptedJobs.decrementAndGet();
 		}
 	}
 
-	private RunningJob start(JobId jobId, JobSpec jobSpec) throws IOException {
-		DirCreator.createDir(BASE_TEMP_DIR);
-
-		// create job specific temp dir job_jobId form
-		Path jobDirPath = Files.createTempDirectory(BASE_TEMP_DIR, "job_%s_".formatted(jobId.value()));
+	private RunningJob start(JobId jobId, JobSpec jobSpec, Path jobDirPath) throws IOException {
+		// create output dir
+		Path outputDirPath = jobDirPath.resolve("output");
 
 		// create logs dir
-		Path logs = jobDirPath.resolve("logs");
+		Path logs = outputDirPath.resolve("logs");
 		DirCreator.createDir(logs);
 
 		// create path to files - files do not exist on disk yet
 		Path stdoutFile = logs.resolve("stdout.log");
 		Path stderrFile = logs.resolve("stderr.log");
 
-		// prepare the command and arguments
+		// prepare the command and arguments TODO
 		String[] commandAndArgs = jobSpec.command().split(" ");
 
 		// create the process with process builder - and run in separated directory (job specific directory)
@@ -192,9 +221,9 @@ public final class JobExecutor {
 		stdout.start();
 		stderr.start();
 
-		return new RunningJob(job, jobDirPath, stdout, stderr);
+		return new RunningJob(job, outputDirPath, stdout, stderr);
 	}
 
-	private record RunningJob(Process process, Path workDir, Thread stdout, Thread stderr) {
+	private record RunningJob(Process process, Path resultDir, Thread stdout, Thread stderr) {
 	}
 }

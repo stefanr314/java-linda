@@ -42,7 +42,7 @@ public non-sealed class ReporterMessageSink implements JobReporter {
 	public void finished(CollectedResults collectedResults) {
 		try {
 			Objects.requireNonNull(collectedResults);
-			
+
 			sink.send(new JobFinished(collectedResults.jobId()));
 
 			JobId jobId = collectedResults.jobId();
@@ -56,9 +56,9 @@ public non-sealed class ReporterMessageSink implements JobReporter {
 			filenames.add(stderrLog);
 			filenames.add(stdoutLog);
 
-			Path workDir = collectedResults.workDir();
+			Path workDir = collectedResults.resultDir();
 
-			// delegate to structure that knows how to read files and write object to channel
+			// delegate to structure that knows how to read files and send FileChunks over the net
 			new FileChunkSender(this.sink::send).sendFiles(jobId, filenames, workDir, () -> false);
 		} catch (IOException e) {
 			LOGGER.log(Level.WARNING, "Could not collected results; The control connection is gone. Results are " +

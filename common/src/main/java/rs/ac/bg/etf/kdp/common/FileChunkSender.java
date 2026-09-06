@@ -37,7 +37,7 @@ public final class FileChunkSender {
 	 * @param filenames        list of filenames to send.
 	 * @param sourceDir        source path of filenames.
 	 * @param stopTransmission stop flag.
-	 * @return true if all files have been sent; false otherwise.
+	 * @return {@code true} if all files have been sent; {@code false} otherwise.
 	 * @throws IOException whilst working with files
 	 */
 	public boolean sendFiles(JobId jobId, List<String> filenames, Path sourceDir,

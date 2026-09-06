@@ -61,6 +61,7 @@ public abstract class FileChunkReceiver {
 			openFileDescriptorsMap.remove(filePath).close();
 			return Optional.of(filePath);
 		} else {
+			// todo do something with chunk.sequence() ?
 			out.write(chunk.data());
 
 			// do not close the file leave it open

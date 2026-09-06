@@ -49,8 +49,6 @@ public class WorkstationHandler implements ConnectionHandler {
 			(runner) -> new Thread(runner, "file-chunk-writer-")
 	);
 
-	private Path outputDirPath;
-
 	public WorkstationHandler(CloseableMessageSink messageSink, ObjectInput in,
 							  WorkstationRegistrator registrator,
 							  WorkstationInfo info, JobRegistry jobRegistry, Scheduler scheduler, Path baseDirPath) {
@@ -163,7 +161,7 @@ public class WorkstationHandler implements ConnectionHandler {
 			} else if (message instanceof JobFinished finished) {
 
 				// job dir at this point will already exist just create the output dir
-				outputDirPath = baseDirPath.resolve("job_" + finished.jobId().value()).resolve("output");
+				Path outputDirPath = baseDirPath.resolve("job_" + finished.jobId().value()).resolve("output");
 
 				try {
 					DirCreator.createDir(outputDirPath);
@@ -178,15 +176,27 @@ public class WorkstationHandler implements ConnectionHandler {
 
 				try {
 					JobId jobId = fileChunk.jobId();
-					fileChunkReceiver.acceptChunkAndWrite(fileChunk, outputDirPath).ifPresent(path -> {
-						LOGGER.info("Job results for job %s have been collected. Job is DONE.".formatted(jobId));
-						jobRegistry.finished(jobId);
-						context.releaseSlot();
-					});
+					Path writeToPath = baseDirPath.resolve("job_" + jobId.value()).resolve("output");
+
+					fileChunkReceiver.acceptChunkAndWrite(fileChunk, writeToPath);
 				} catch (IOException e) {
 					// these should not break the station down
 					LOGGER.log(Level.SEVERE, "File IO system failed", e);
 				}
+			} else if (message instanceof OutputFilesEnd filesEnd) {
+				LOGGER.info("Results RECEIVED for job: " + filesEnd.jobId().value());
+
+				LOGGER.fine(() -> {
+					StringBuilder returnMessage = new StringBuilder("All files received. Files received: ");
+					for (String delivered : filesEnd.deliveredFiles()) {
+						returnMessage.append(delivered);
+					}
+
+					return returnMessage.toString();
+				});
+
+				jobRegistry.finished(filesEnd.jobId());
+				context.releaseSlot();
 			} else if (message instanceof JobFailed failed) {
 
 				LOGGER.log(Level.WARNING,

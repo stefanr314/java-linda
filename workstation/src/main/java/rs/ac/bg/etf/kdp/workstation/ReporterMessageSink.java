@@ -5,6 +5,7 @@ import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.protocol.JobFailed;
 import rs.ac.bg.etf.kdp.common.protocol.JobFinished;
 import rs.ac.bg.etf.kdp.common.protocol.JobRunning;
+import rs.ac.bg.etf.kdp.common.protocol.OutputFilesEnd;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -59,7 +60,9 @@ public non-sealed class ReporterMessageSink implements JobReporter {
 			Path workDir = collectedResults.resultDir();
 
 			// delegate to structure that knows how to read files and send FileChunks over the net
-			new FileChunkSender(this.sink::send).sendFiles(jobId, filenames, workDir, () -> false);
+			if (new FileChunkSender(this.sink::send).sendFiles(jobId, filenames, workDir, () -> false)) {
+				sink.send(new OutputFilesEnd(jobId, filenames)); // mark the end
+			}
 		} catch (IOException e) {
 			LOGGER.log(Level.WARNING, "Could not collected results; The control connection is gone. Results are " +
 					"nowhere to be reported.", e);

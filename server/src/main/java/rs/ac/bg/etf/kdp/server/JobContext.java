@@ -34,22 +34,29 @@ public final class JobContext {
 
 	/*
 	Connection(s) to outer workstation(s) that perform the job execution - ONLY ON LINDA TASK. Must be closed on
-	terminal states and disconnection of station(s). TODO: consider workstation context instead
+	terminal states and disconnection of station(s).
 	 */
 	private final Set<CloseableMessageSink> connections = ConcurrentHashMap.newKeySet();
 	private final Set<String> assignedWorkstations = ConcurrentHashMap.newKeySet();
 
 	private final UserContext userContext;
 	private final JobSpec spec;
+
 	// required to save if job gets delegated from broken station to working one
 	private final Object statusLock = new Object();
+
 	// job counter received by server - serves no purpose, just required by specification of project
 	private final long jobNumber;
+
 	private final Instant arrivedAt = Instant.now();
+
 	private String failureReason;
+
 	private volatile Instant completedAt;
 
 	private volatile JobStatus status = JobStatus.RECEIVING;  // NOTE: volatile overkill if synchronization used
+
+	private volatile boolean fileTransmissionStopped;
 
 	public JobContext(JobId jobId, UserContext userContext, JobSpec spec, long jobCounter) {
 		this.jobId = jobId;
@@ -106,6 +113,24 @@ public final class JobContext {
 		return status;
 	}
 
+	public boolean isFileTransmissionStopped() {
+		return fileTransmissionStopped;
+	}
+
+	/**
+	 * Method that sets the external flag to stop a transmission so the writer can see the new flag and stop file
+	 * transmission. Writer thread is separated from reader thread so <em>visibility matters.</em>
+	 */
+	void stopFileTransmission() {
+		fileTransmissionStopped = true;
+	}
+
+	/**
+	 * Method for resetting transmission flag so the files can be transmitted again.
+	 */
+	void resetFileTransmission() {
+		fileTransmissionStopped = false;
+	}
 
 	/**
 	 * Method for trying to change the status if new status transition is allowed according to the

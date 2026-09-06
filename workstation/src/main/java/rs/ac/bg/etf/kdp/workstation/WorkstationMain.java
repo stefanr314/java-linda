@@ -1,12 +1,14 @@
 package rs.ac.bg.etf.kdp.workstation;
 
-import rs.ac.bg.etf.kdp.common.WorkstationInfo;
+import rs.ac.bg.etf.kdp.common.*;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.*;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -26,6 +28,8 @@ import java.util.logging.Logger;
  */
 public final class WorkstationMain implements AutoCloseable {
 
+	private static final Path BASE_PATH = Paths.get(System.getProperty("java.io.tmpdir"), "workstation_jobs");
+
 	private final static Logger LOGGER = Logger.getLogger(WorkstationMain.class.getSimpleName());
 
 	private final static long INITIAL_SO_TIMEOUT = TimeUnit.SECONDS.toMillis(60);
@@ -40,11 +44,14 @@ public final class WorkstationMain implements AutoCloseable {
 
 	private final JobExecutor jobExecutor;
 
+	private final FileChunkReceiver fileReceiver = new ClientInputFilesReceiver();
+
 	private final String os;
 	private final String hostname;
 	private final String javaVersion;
 	private final int parallelismCapacity;
 
+	private Path inputPath;
 
 	public WorkstationMain(String serverHostname, int serverPort, int capacity) throws IOException {
 		this.socket = new Socket(serverHostname, serverPort);
@@ -54,7 +61,7 @@ public final class WorkstationMain implements AutoCloseable {
 		this.sink = new ObjectMessageSink(out);
 
 		this.parallelismCapacity = capacity;
-		this.workers = Executors.newFixedThreadPool(parallelismCapacity);
+		this.workers = Executors.newFixedThreadPool(parallelismCapacity, (runner) -> new Thread(runner, "worker-"));
 
 		this.reporter = new ReporterMessageSink(sink);
 
@@ -63,6 +70,8 @@ public final class WorkstationMain implements AutoCloseable {
 		this.os = System.getProperty("os.name");
 		this.javaVersion = getJavaVersionFromRuntime();
 		this.hostname = "ws-" + UUID.randomUUID().toString().substring(0, 16);
+
+		DirCreator.createDir(BASE_PATH);
 	}
 
 	public static void main(String[] args) {
@@ -133,7 +142,7 @@ public final class WorkstationMain implements AutoCloseable {
 			try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 				sink.send(new WorkstationHello(workstationInfo()));
 
-				// covered by initial so timeout i.e. wait a minute until serer responds
+				// covered by initial so timeout i.e. wait a minute until server responds
 				Object ack = in.readObject();
 
 				if (ack instanceof Failure failure) throw new IOException("Handshake refused: " + failure.message());
@@ -169,24 +178,73 @@ public final class WorkstationMain implements AutoCloseable {
 			}
 
 			if (received instanceof Ping ping) {
+
 				LOGGER.info("Server ping received, ponging back...");
 				sink.send(new Pong(ping.timeNanos()));
 			} else if (received instanceof Pong pong) {
 				// server is alive - separate thread required for connection check
 			} else if (received instanceof JobDispatch jobDispatch) {
+
 				if (jobExecutor.accept(jobDispatch.jobId(), jobDispatch.jobSpec())) {
+					inputPath = BASE_PATH.resolve("job_" + jobDispatch.jobId().value()).resolve("input");
+
+					try {
+						DirCreator.createDir(inputPath);
+					} catch (IOException diskException) {
+						LOGGER.log(Level.WARNING, "Internal disk exception. Dir creation failed", diskException);
+
+						sink.send(new JobRejected(jobDispatch.jobId(), "Internal disk error."));
+						continue;
+					}
+
 					sink.send(new JobAccepted(jobDispatch.jobId()));
 				} else {
+
 					sink.send(new JobRejected(jobDispatch.jobId(), "All workers occupied."));
 				}
+			} else if (received instanceof FileChunk chunk) {
+
+				try {
+					fileReceiver.acceptChunkAndWrite(chunk, inputPath).ifPresent(filepath -> {
+						LOGGER.info("File received and saved on: " + filepath);
+					});
+				} catch (IOException diskException) {
+					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.", diskException);
+
+					reactToFileReceiptFailure(
+							chunk.jobId(),
+							() -> {
+								try {
+									sink.send(new JobRejected(chunk.jobId(), "Error upon receiving job input files. Input files have not been received."));
+								} catch (IOException e) {
+									LOGGER.log(Level.WARNING, "Unable to send job rejection to server.", e);
+								}
+							}
+					);
+				}
+			} else if (received instanceof InputFilesEnd filesEnd) {
+
+				LOGGER.info("All files received for job: " + filesEnd.jobId());
+
+				jobExecutor.execute(filesEnd.jobId(), inputPath.getParent());
+
+			} else if (received instanceof JobFilesFailure filesFailure) {
+
+				// server suffered internal error - delete input dir
+				reactToFileReceiptFailure(filesFailure.jobId(), () -> {
+				});
+			} else if (received instanceof JobNotPresent jobNotPresent) {
+				// do something ??
+				LOGGER.log(Level.WARNING, "Job not recognized by server. Job id: " + jobNotPresent.jobId().value());
 			} else if (received instanceof Bye ignored) {
+				LOGGER.info("Server sent bye message.");
+
 				return; // communication ended
 			} else {
 				sink.send(new Failure("Message not recognized: " + received.getClass()));
 			}
 		}
 	}
-
 
 	@Override
 	public void close() throws IOException {
@@ -205,8 +263,24 @@ public final class WorkstationMain implements AutoCloseable {
 		}
 	}
 
+	/**
+	 * Method for returning workstation info.
+	 *
+	 * @return workstation info value holder.
+	 */
 	public WorkstationInfo workstationInfo() {
 		return new WorkstationInfo(hostname, os, javaVersion, parallelismCapacity);
+	}
+
+	private void reactToFileReceiptFailure(JobId jobId, Runnable reaction) throws IOException {
+		fileReceiver.abandon();
+
+		if (inputPath != null) {
+			DirCreator.recursivelyDeleteDirOnPath(inputPath.getParent());
+		}
+
+		jobExecutor.jobReleaser(jobId);
+		reaction.run();
 	}
 
 	private String getJavaVersionFromRuntime() {

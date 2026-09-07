@@ -1,11 +1,11 @@
 package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.HeartbeatPolicy;
+import rs.ac.bg.etf.kdp.common.JobStatus;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
 import rs.ac.bg.etf.kdp.common.protocol.Registered;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -93,15 +93,7 @@ public final class WorkstationRegistrator {
 	 * </p>
 	 */
 	public void unregister(WorkstationContext context) {
-		List<JobContext> jobsOn = jobRegistry.activeJobsOn(context.hostName());
-
-		for (JobContext job : jobsOn) {
-			//todo: also remove the connection from job context and station from assigned workstations
-
-//			job.removeFailedStation(context, context.hostName());
-			LOGGER.info("Rescheduling jobs from stations: " + context.hostName());
-			jobRegistry.requeued(job.jobId());
-		}
+		cleanUpAfter(Objects.requireNonNull(context));
 
 		if (registry.unregister(context)) {
 			LOGGER.log(Level.INFO, "Unregistered workstation {0}", context.hostName());
@@ -110,5 +102,21 @@ public final class WorkstationRegistrator {
 					"Workstation {0} had already been replaced by a newer registration",
 					context.hostName());
 		}
+	}
+
+	private void cleanUpAfter(WorkstationContext station) {
+		for (JobContext job : jobRegistry.activeJobsOn(station.hostName())) {
+			// A job the station never got to start goes back in the queue; the client asked for it
+			// and nothing about it has run yet.
+			if (job.status() == JobStatus.SCHEDULED) {
+				jobRegistry.requeued(job.jobId());
+				continue;
+			}
+			// A running job is a different matter: it may have produced partial output and its
+			// tuple space may hold state, so the assignment requires asking the user whether to
+			// reschedule or abort. Until that exists, fail it rather than silently rerun it.
+			jobRegistry.failed(job.jobId(), "workstation " + station.hostName() + " was lost");
+		}
+		scheduler.scheduleReadyJobs();
 	}
 }

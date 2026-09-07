@@ -49,8 +49,11 @@ public abstract class FileChunkReceiver {
 	 * <p>
 	 * Path provided must contain the actual dir created on path. Creation of this dir is the responsibility of
 	 * adequate handler that can detect the signal from client/station to retriver input/result files. These
-	 * signals must be provided prior to the receiving the file chunk object -> TCP guarantees this.
+	 * signals must be provided prior to the receiving the file chunk object -> TCP guarantees this. Otherwise, IO
+	 * exception will be thrown.
 	 * </p>
+	 * <p>It's mandatory to catch IO exception and call the {@link FileChunkReceiver#abandon()} in catch routine in
+	 * order to close all the open files.</p>
 	 *
 	 * @param chunk       an object representing the actual file chunk data being sent with metainformation.
 	 * @param writeToPath path to dir in which the files will be saved.

@@ -50,17 +50,22 @@ public final class DirCreator {
 	public static void recursivelyDeleteDirOnPath(Path target) {
 		Objects.requireNonNull(target);
 
-		try (Stream<Path> walk = Files.walk(target);) {
-			walk.sorted(Comparator.reverseOrder())
-					.forEach(path -> {
-						try {
-							Files.delete(path);
-						} catch (IOException e) {
-							LOGGER.log(Level.WARNING, "Exception upon trying to delete the file on path: " + path, e);
-						}
-					});
-		} catch (IOException e) {
-			LOGGER.log(Level.WARNING, "Exception when deleting the abandoned job dir", e);
+		if (Files.isDirectory(target)) {
+			try (Stream<Path> walk = Files.walk(target);) {
+				walk.sorted(Comparator.reverseOrder())
+						.forEach(path -> {
+							try {
+								Files.delete(path);
+							} catch (IOException e) {
+								LOGGER.log(Level.WARNING, "Exception upon trying to delete the file on path: " + path, e);
+							}
+						});
+			} catch (IOException e) {
+				LOGGER.log(Level.WARNING, "Exception when deleting the abandoned job dir", e);
+			}
+		} else {
+			LOGGER.log(Level.INFO,
+					"Target not directory or not found, dir was not present to be deleted. Target path: " + target);
 		}
 	}
 }

@@ -11,6 +11,7 @@ import java.io.Serializable;
  * @param exitCode    the exit code of the job's OS process
  * @param outputFiles paths to the output files produced by the job
  */
+@Deprecated
 public record JobResult(JobId jobId, JobStatus status, int exitCode, java.util.List<String> outputFiles)
-        implements Serializable {
+		implements Serializable {
 }

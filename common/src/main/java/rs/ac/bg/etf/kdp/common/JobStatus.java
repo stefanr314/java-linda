@@ -45,7 +45,7 @@ public enum JobStatus {
 	ABORTED;
 
 	static {
-		RECEIVING.possibleNext = EnumSet.of(JobStatus.READY);
+		RECEIVING.possibleNext = EnumSet.of(JobStatus.READY, JobStatus.FAILED, JobStatus.ABORTED);
 		READY.possibleNext = EnumSet.of(JobStatus.SCHEDULED, JobStatus.ABORTED);
 		SCHEDULED.possibleNext = EnumSet.of(JobStatus.RUNNING, JobStatus.FAILED, JobStatus.ABORTED, JobStatus.READY);
 

@@ -5,7 +5,6 @@ import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -135,10 +134,9 @@ public class ClientHandler implements ConnectionHandler {
 					fileReceiver.acceptChunkAndWrite(fileChunk, inputDir).ifPresent(filepath -> {
 						LOGGER.info("File received and saved on: " + filepath);
 					});
-				} catch (IOException | UncheckedIOException diskException) {
+				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.",
-							diskException instanceof UncheckedIOException ?
-									((UncheckedIOException) diskException).getCause() : diskException);
+							diskException);
 
 					internalFileRejection(
 							userContext,

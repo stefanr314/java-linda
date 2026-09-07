@@ -51,8 +51,6 @@ public final class WorkstationMain implements AutoCloseable {
 	private final String javaVersion;
 	private final int parallelismCapacity;
 
-	private Path inputPath;
-
 	public WorkstationMain(String serverHostname, int serverPort, int capacity) throws IOException {
 		this.socket = new Socket(serverHostname, serverPort);
 		this.socket.setSoTimeout((int) INITIAL_SO_TIMEOUT);
@@ -186,7 +184,7 @@ public final class WorkstationMain implements AutoCloseable {
 			} else if (received instanceof JobDispatch jobDispatch) {
 
 				if (jobExecutor.accept(jobDispatch.jobId(), jobDispatch.jobSpec())) {
-					inputPath = BASE_PATH.resolve("job_" + jobDispatch.jobId().value()).resolve("input");
+					Path inputPath = BASE_PATH.resolve("job_" + jobDispatch.jobId().value()).resolve("input");
 
 					try {
 						DirCreator.createDir(inputPath);
@@ -204,19 +202,23 @@ public final class WorkstationMain implements AutoCloseable {
 				}
 			} else if (received instanceof FileChunk chunk) {
 
+				Path inputPath = BASE_PATH.resolve("job_" + chunk.jobId().value()).resolve("input");
+
 				try {
-					fileReceiver.acceptChunkAndWrite(chunk, inputPath).ifPresent(filepath -> {
-						LOGGER.info("File received and saved on: " + filepath);
-					});
-				} catch (IOException | UncheckedIOException diskException) {
+					fileReceiver.acceptChunkAndWrite(chunk, inputPath).ifPresent(
+							filepath -> LOGGER.info("File received and saved on: " + filepath));
+				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.",
-							diskException instanceof UncheckedIOException unchecked ? unchecked.getCause() : diskException);
+							diskException);
 
 					reactToFileReceiptFailure(
 							chunk.jobId(),
 							() -> {
 								try {
-									sink.send(new JobRejected(chunk.jobId(), "Error upon receiving job input files. Input files have not been received."));
+									sink.send(
+											new JobRejected(chunk.jobId(),
+													"Error upon receiving job input files. Input files have not been received.")
+									);
 								} catch (IOException e) {
 									LOGGER.log(Level.WARNING, "Unable to send job rejection to server.", e);
 								}
@@ -227,7 +229,9 @@ public final class WorkstationMain implements AutoCloseable {
 
 				LOGGER.info("All files received for job: " + filesEnd.jobId());
 
-				jobExecutor.execute(filesEnd.jobId(), inputPath.getParent());
+				Path jobDir = BASE_PATH.resolve("job_" + filesEnd.jobId().value());
+
+				jobExecutor.execute(filesEnd.jobId(), jobDir);
 
 			} else if (received instanceof JobFilesFailure filesFailure) {
 
@@ -276,9 +280,9 @@ public final class WorkstationMain implements AutoCloseable {
 	private void reactToFileReceiptFailure(JobId jobId, Runnable reaction) throws IOException {
 		fileReceiver.abandon();
 
-		if (inputPath != null) {
-			DirCreator.recursivelyDeleteDirOnPath(inputPath.getParent());
-		}
+		Path inputPath = BASE_PATH.resolve("job_" + jobId.value()).resolve("input");
+
+		DirCreator.recursivelyDeleteDirOnPath(inputPath);
 
 		jobExecutor.jobReleaser(jobId);
 		reaction.run();

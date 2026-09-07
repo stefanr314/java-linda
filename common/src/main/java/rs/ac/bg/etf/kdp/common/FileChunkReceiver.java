@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -21,12 +22,20 @@ public abstract class FileChunkReceiver {
 	Hash map is enough here since no more than one thread will call this objects method for writing to files. IF THIS
 	 EVER CHANGES THE SYNCHRONIZATION IS REQUIRED.
 	 */
-	private final Map<Path, OutputStream> openFileDescriptorsMap = new HashMap<>();
+	private final Map<Path, OutputStream> openFileDescriptorsMap = new HashMap<>(); // todo
+
+	/**
+	 * Next expected sequence number per file. TCP already guarantees order on one connection, so
+	 * this cannot fail in normal operation — which is exactly why it is worth asserting. A gap
+	 * means chunks of two transfers were interleaved into one receiver, or that a sender was
+	 * restarted mid-file, and both would otherwise show up much later as a silently corrupt file.
+	 */
+	private final Map<Path, Integer> expectedSequence = new HashMap<>();
 
 	private static OutputStream apply(Path newFilePath) {
 		OutputStream outputStream;
 		try {
-			outputStream = Files.newOutputStream(newFilePath);
+			outputStream = Files.newOutputStream(newFilePath, StandardOpenOption.CREATE_NEW);
 		} catch (IOException e) {
 			LOGGER.severe("Failed to open the stream towards the file. Check the file path.");
 			throw new UncheckedIOException(e);
@@ -56,7 +65,12 @@ public abstract class FileChunkReceiver {
 		Path filePath = calculatePath(chunk.fileName(), writeToPath);
 
 		// open the stream to it - create the new stream if filename has not yet been seen in map
-		OutputStream out = openFileDescriptorsMap.computeIfAbsent(filePath, FileChunkReceiver::apply);
+		OutputStream out;
+		try {
+			out = openFileDescriptorsMap.computeIfAbsent(filePath, FileChunkReceiver::apply);
+		} catch (UncheckedIOException e) {
+			throw e.getCause();
+		}
 
 		// check whether the chunk is last for filename - return path to the filename if so otherwise return empty
 		if (chunk.last()) { // last chunk holds no value

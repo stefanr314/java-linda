@@ -80,7 +80,8 @@ public final class JobExecutor {
 	/**
 	 * Method for starting the execution of job upon all input files have been received.
 	 *
-	 * @param jobId id of job to be executed
+	 * @param jobId      id of job to be executed.
+	 * @param jobDirPath path of job dir - on this path the process will start the job.
 	 */
 	public void execute(JobId jobId, Path jobDirPath) {
 		Objects.requireNonNull(jobId);
@@ -93,6 +94,8 @@ public final class JobExecutor {
 
 	/**
 	 * Release all occupied resources prior to execution of job i.e. in input file transfer phase.
+	 *
+	 * @param jobId id of job that must be released/cleaned after.
 	 */
 	void jobReleaser(JobId jobId) {
 		Objects.requireNonNull(jobId);
@@ -104,6 +107,8 @@ public final class JobExecutor {
 
 	/**
 	 * Called from the control thread on AbortJob.Note WIP.
+	 *
+	 * @param jobId id of aborted job
 	 */
 	public void abort(JobId jobId) {
 		Process process = runningJobs.get(jobId);

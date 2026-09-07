@@ -173,8 +173,8 @@ public final class JobRegistry {
 	 * @param jobId  id of failed job.
 	 * @param reason reason of job failure.
 	 */
-	public void failed(JobId jobId, String reason) {
-		transit(jobId, JobStatus.FAILED, jobContext -> {
+	public boolean failed(JobId jobId, String reason) {
+		return transit(jobId, JobStatus.FAILED, jobContext -> {
 			jobContext.recordFailure(reason);
 			jobContext.releaseResources();
 		});

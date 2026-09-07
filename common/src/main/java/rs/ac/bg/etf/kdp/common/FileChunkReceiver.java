@@ -72,12 +72,21 @@ public abstract class FileChunkReceiver {
 			throw e.getCause();
 		}
 
+		int expected = expectedSequence.getOrDefault(filePath, 0);
+		if (chunk.sequence() != expected) {
+			openFileDescriptorsMap.remove(filePath);   // stream is closed by abandon() IOException is trigger
+			expectedSequence.remove(filePath);
+			throw new IOException("Out-of-order chunk for %s: expected %d, got %d"
+					.formatted(chunk.fileName(), expected, chunk.sequence()));
+		}
+		expectedSequence.put(filePath, expected + 1);
+
 		// check whether the chunk is last for filename - return path to the filename if so otherwise return empty
 		if (chunk.last()) { // last chunk holds no value
+			expectedSequence.remove(filePath);
 			openFileDescriptorsMap.remove(filePath).close();
 			return Optional.of(filePath);
 		} else {
-			// todo do something with chunk.sequence() ?
 			out.write(chunk.data());
 
 			// do not close the file leave it open
@@ -99,6 +108,7 @@ public abstract class FileChunkReceiver {
 		}
 
 		openFileDescriptorsMap.clear();
+		expectedSequence.clear();
 	}
 
 	/**

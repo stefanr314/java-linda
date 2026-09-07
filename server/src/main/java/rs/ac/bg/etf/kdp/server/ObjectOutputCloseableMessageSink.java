@@ -3,6 +3,7 @@ package rs.ac.bg.etf.kdp.server;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Concrete {@link CloseableMessageSink} for sending objects over the provided stream and socket.
@@ -11,7 +12,11 @@ public class ObjectOutputCloseableMessageSink implements CloseableMessageSink {
 	private final ObjectOutputStream out;
 	private final Closeable socket;
 
-	private final Object writeLock = new Object();  // private inner lock, to prevent outer lock holdings
+	/*
+	Write lock is now a fair lock. Fairness price is okay since not many writers will contest on it frequently (the
+	writing process itself is more expensive than fairness mechanism).
+	 */
+	private final ReentrantLock writeLock = new ReentrantLock(true);
 
 
 	public ObjectOutputCloseableMessageSink(ObjectOutputStream out, Closeable socket) {
@@ -21,7 +26,8 @@ public class ObjectOutputCloseableMessageSink implements CloseableMessageSink {
 
 	@Override
 	public void send(Object message) throws IOException {
-		synchronized (writeLock) {
+		writeLock.lock();
+		try {
 			out.writeObject(message);
 			// Clears the back-reference table. Without it, a message equal to one sent earlier goes
 			// out as a mere back-reference and the peer sees the stale object; the table also grows
@@ -29,6 +35,8 @@ public class ObjectOutputCloseableMessageSink implements CloseableMessageSink {
 
 			out.reset();
 			out.flush();
+		} finally {
+			writeLock.unlock();
 		}
 	}
 

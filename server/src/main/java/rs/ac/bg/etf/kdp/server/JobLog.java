@@ -9,9 +9,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * status.
  */
 public final class JobLog {
-
-	//FIXME appending is not enough
-
+	
 	private final List<JobContext> entries = new CopyOnWriteArrayList<>();
 
 	/**

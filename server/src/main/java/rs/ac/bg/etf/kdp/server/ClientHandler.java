@@ -66,7 +66,25 @@ public class ClientHandler implements ConnectionHandler {
 			throw new RuntimeException(e); //fixme
 		} finally {
 			userContext.disconnect();  // close the user context
-			// if state of job was new when connection broke delete it from the registry
+
+			// close all open input files
+			fileReceiver.abandon();
+
+			// remove from registry all jobs with status RECEIVING - there can be only one such file since input
+			// files transfer is sequential
+			if (currentJobId != null) {
+				// moving to failed status so we can see it in job log.
+				jobRegistry.failed(
+						currentJobId,
+						"Client disconnected mid-way whilest transferring input files."
+				);
+
+				Path jobPath = baseDirPath.resolve("job_" + currentJobId.value());
+				DirCreator.recursivelyDeleteDirOnPath(jobPath);
+
+				// this job serves no point just delete it.
+				jobRegistry.remove(currentJobId);
+			}
 		}
 	}
 
@@ -78,7 +96,9 @@ public class ClientHandler implements ConnectionHandler {
 
 				// just support files transfer in sequence.
 				if (jobSpec != null && currentJobId != null
-						&& jobRegistry.find(currentJobId).map(j -> j.status() == JobStatus.RECEIVING).orElse(false)) {
+						&& jobRegistry.find(currentJobId)
+						.map(j -> j.status() == JobStatus.RECEIVING)
+						.orElse(false)) {
 					userContext.send(new Failure("Finish uploading the previous job first"));
 					continue;
 				}
@@ -131,11 +151,15 @@ public class ClientHandler implements ConnectionHandler {
 				Path inputDir = baseDirPath.resolve("job_" + fileChunk.jobId().value()).resolve("input");
 
 				try {
-					fileReceiver.acceptChunkAndWrite(fileChunk, inputDir).ifPresent(filepath -> {
-						LOGGER.info("File received and saved on: " + filepath);
-					});
+					fileReceiver.acceptChunkAndWrite(fileChunk, inputDir)
+							.ifPresent(filepath -> {
+
+								LOGGER.info("File received and saved on: " + filepath); // these logs are too verbose
+
+							});
 				} catch (IOException diskException) {
-					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.",
+					LOGGER.log(Level.WARNING,
+							"Error when working with files. Disk exception happened.",
 							diskException);
 
 					internalFileRejection(
@@ -155,7 +179,9 @@ public class ClientHandler implements ConnectionHandler {
 				List<String> expected = new ArrayList<>(spec.inputFiles());
 				expected.add(spec.jobFilename());
 
-				Path inputDir = baseDirPath.resolve("job_" + filesReceived.jobId().value()).resolve("input");
+				Path inputDir = baseDirPath
+						.resolve("job_" + filesReceived.jobId().value())
+						.resolve("input");
 
 				// take the path and check whether exists
 				List<String> missing = expected.stream()
@@ -203,8 +229,12 @@ public class ClientHandler implements ConnectionHandler {
 	}
 
 	private void internalFileRejection(UserContext userContext, JobId jobId, String reason) throws IOException {
-		// close open files
+		// close open files - (mandatory to close open files before deleting them on windows)
 		fileReceiver.abandon();
+
+		// this is more of a decoration move; on this way job log is appended with proper state and reason;
+		// otherwise, this job is not so handy so just deleting it prior to setting it false is also fine...
+		jobRegistry.failed(jobId, reason);
 
 		// delete job dir and everything inside
 		Path jobDir = baseDirPath.resolve("job_" + jobId.value());
@@ -213,8 +243,12 @@ public class ClientHandler implements ConnectionHandler {
 		// remove job
 		jobRegistry.remove(jobId);
 
+		// null-ing current job;
+		currentJobId = null;
+
 		// constraint broken - declare job rejected
-		userContext.send(new JobFilesFailure(jobId,
-				reason));
+		userContext.send(
+				new JobFilesFailure(jobId, reason)
+		);
 	}
 }

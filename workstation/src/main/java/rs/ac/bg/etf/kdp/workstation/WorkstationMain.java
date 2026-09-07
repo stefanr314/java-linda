@@ -206,7 +206,10 @@ public final class WorkstationMain implements AutoCloseable {
 
 				try {
 					fileReceiver.acceptChunkAndWrite(chunk, inputPath).ifPresent(
-							filepath -> LOGGER.info("File received and saved on: " + filepath));
+							filepath -> LOGGER.info(
+									"File received and saved on: " + filepath
+							)
+					);
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.",
 							diskException);
@@ -217,7 +220,8 @@ public final class WorkstationMain implements AutoCloseable {
 								try {
 									sink.send(
 											new JobRejected(chunk.jobId(),
-													"Error upon receiving job input files. Input files have not been received.")
+													"Error upon receiving job input files. " +
+															"Input files have not been received.")
 									);
 								} catch (IOException e) {
 									LOGGER.log(Level.WARNING, "Unable to send job rejection to server.", e);
@@ -247,7 +251,11 @@ public final class WorkstationMain implements AutoCloseable {
 				
 			} else if (received instanceof JobNotPresent jobNotPresent) {
 				// do something ??
-				LOGGER.log(Level.WARNING, "Job not recognized by server. Job id: " + jobNotPresent.jobId().value());
+				LOGGER.log(
+						Level.WARNING,
+						"Job not recognized by server. Job id: "
+						+ jobNotPresent.jobId().value()
+				);
 			} else if (received instanceof Bye ignored) {
 				LOGGER.info("Server sent bye message.");
 

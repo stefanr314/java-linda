@@ -127,16 +127,21 @@ public final class ServerMain implements AutoCloseable {
 
 				if (!(received instanceof Hello hello)) {
 					// handle the failure response since entry message is not recognized
-					out.writeObject(new Failure("Entry protocol message incorrect. Please provide proper hello " +
-							"message type. Type received " + received.getClass().getSimpleName()));
-					out.flush();
+					messageSink.send(
+							new Failure(
+							"Entry protocol message incorrect. Please provide proper hello " +
+							"message type. Type received " + received.getClass().getSimpleName()
+							)
+					);
+
 					return;
 				}
 
 				connectionHandlerFactory.getHandler(hello, messageSink, in).run();
 			}
 		} catch (EOFException | SocketException e) {
-			// normal behaviour upon receiving sentinel value from other ended communication side; or closing the socket
+			// normal behaviour upon receiving sentinel value from other ended communication side;
+			// or closing the socket
 		} catch (IOException | ClassNotFoundException e) {
 			LOGGER.log(Level.SEVERE,
 					"Exception of type" + e.getClass().getSimpleName()

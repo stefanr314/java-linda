@@ -5,10 +5,12 @@ import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
+import java.nio.file.FileSystemException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -41,17 +43,25 @@ public class WorkstationHandler implements ConnectionHandler {
 	private final Path baseDirPath;
 
 	/*
-	Separate pool for sending file chunks to the workstation. Writes must be conducted in separate thread since the
-	main thread will not read incoming messages properly.
+	Separate thread for writing of file chunks to socket.
 	 */
-	private final ExecutorService writerPool = Executors.newFixedThreadPool(
-			4,
-			(runner) -> new Thread(runner, "file-chunk-writer-")
+	private final ExecutorService chunkWriters = Executors.newFixedThreadPool(
+			2,
+			(runner) -> {
+				Thread thread = new Thread(
+						runner,
+						"file-chunk-writer-" + UUID.randomUUID().getLeastSignificantBits());
+
+				thread.setDaemon(true);
+
+				return thread;
+			}
 	);
 
 	public WorkstationHandler(CloseableMessageSink messageSink, ObjectInput in,
 							  WorkstationRegistrator registrator,
-							  WorkstationInfo info, JobRegistry jobRegistry, Scheduler scheduler, Path baseDirPath) {
+							  WorkstationInfo info, JobRegistry jobRegistry,
+							  Scheduler scheduler, Path baseDirPath) {
 		this.messageSink = messageSink;
 		this.in = in;
 		this.registrator = registrator;
@@ -76,6 +86,22 @@ public class WorkstationHandler implements ConnectionHandler {
 		} finally {
 			// once the socket is closed (no matter the reason) this is the only place to deregister the workstation
 			// from registrator; otherwise dead workstation can be picked as candidate for processing jobs
+
+			fileChunkReceiver.abandon(); // if station died upon sending the results just close open files
+
+			chunkWriters.shutdownNow();  // station is dead so no use of writer thread - visible immediately to
+			// writers since interrupt flag is polled
+
+			// delete all directories for jobs that were running when station died - if transfer started but station
+			// died mid-way it's required to delete these output dirs since they hold partial result values.
+			List<JobContext> jobsOn = jobRegistry.activeJobsOn(context.hostName());
+			for (JobContext jobContext : jobsOn) {
+				Path outputDirPath = baseDirPath
+						.resolve("job_" + jobContext.jobId().value())
+						.resolve("output");
+
+				DirCreator.recursivelyDeleteDirOnPath(outputDirPath);
+			}
 
 			registrator.unregister(context);
 		}
@@ -113,30 +139,67 @@ public class WorkstationHandler implements ConnectionHandler {
 				List<String> filenames = new ArrayList<>(specification.inputFiles());
 				filenames.add(specification.jobFilename());
 
-				Path jobInputDir = baseDirPath.resolve("job_" + jobAccepted.jobId().value()).resolve("input");
+				Path jobInputDir = baseDirPath
+						.resolve("job_" + jobAccepted.jobId().value())
+						.resolve("input");
 
-				writerPool.submit(() -> {
+				chunkWriters.submit(() -> {
 					try {
 						context.send(new InputFilesStart());
-						if (new FileChunkSender(context::send).sendFiles(jobAccepted.jobId(), filenames,
-								jobInputDir, job::isFileTransmissionStopped)) {
+
+						if (new FileChunkSender(context::send).sendFiles(
+								jobAccepted.jobId(),
+								filenames,
+								jobInputDir,
+								() -> job.isFileTransmissionStopped() || Thread.currentThread().isInterrupted())
+						) {
 
 							context.send(new InputFilesEnd(jobAccepted.jobId()));
-						} else {
+						} else if (!Thread.currentThread().isInterrupted()) {
 							job.resetFileTransmission();
 						}
-					} catch (IOException writeException) {
-						LOGGER.log(Level.WARNING, "IO exception while writing the file chunks; check the paths", writeException);
+					} catch (FileSystemException serverSideProblem) {
+						// The input files are gone or unreadable on our side. Rescheduling would send the job to
+						// another station only to fail there for the same reason, so fail it once and let the client
+						// resubmit.
+
+						LOGGER.log(Level.SEVERE, "Job input files unusable on the server", serverSideProblem);
+
 						try {
-							context.send(new JobFilesFailure(jobAccepted.jobId(), "Internal server error."));
-						} catch (IOException e) {
-							// station gone???
+							context.send(
+									new JobFilesFailure(jobAccepted.jobId(), "Internal server error.")
+							);
+						} catch (IOException ignored) {
+							// station gone anyway - do nothing
 						}
+
+						if (jobRegistry.failed(jobAccepted.jobId(), "Input files unreadable on the server")) {
+							context.releaseSlot();
+						}
+
+					} catch (IOException writeException) {
+						LOGGER.log(
+								Level.WARNING,
+								"IO exception while writing the file chunks; check the paths",
+								writeException
+						);
+
+						// A missing file or a disk error on server side fails one
+						// transfer without touching the connection. Its slot is still reserved for a job that will
+						// never arrive, so give it back.
+						context.releaseSlot();
+						jobRegistry.requeued(jobAccepted.jobId());
+
+						// try rescheduling it back
+						scheduler.scheduleReadyJobs();
 					}
 				});
 			} else if (message instanceof JobRunning running) {
 
-				LOGGER.info("Job %s has been started on station: %s".formatted(running.jobId(), context.hostName()));
+				LOGGER.info(
+						"Job %s has been started on station: %s"
+								.formatted(running.jobId(), context.hostName())
+				);
 				jobRegistry.running(running.jobId());
 			} else if (message instanceof JobRejected rejected) {
 
@@ -161,16 +224,26 @@ public class WorkstationHandler implements ConnectionHandler {
 			} else if (message instanceof JobFinished finished) {
 
 				// job dir at this point will already exist just create the output dir
-				Path outputDirPath = baseDirPath.resolve("job_" + finished.jobId().value()).resolve("output");
+				Path outputDirPath = baseDirPath
+						.resolve("job_" + finished.jobId().value())
+						.resolve("output");
 
 				try {
 					DirCreator.createDir(outputDirPath);
 				} catch (IOException diskException) {
-					// todo: handle me
 					LOGGER.log(Level.SEVERE, "Disk exception upon creating output dir.", diskException);
+
+					jobRegistry.failed(finished.jobId(), "Internal server error upon dir creation");
+
+					context.send(new AbortResultTransfer(finished.jobId()));
+
+					context.releaseSlot();
 				}
 
-				LOGGER.info("Job %s has been finished. Output results to be received...".formatted(finished.jobId()));
+				LOGGER.info(
+						"Job %s has been finished. Output results to be received..."
+								.formatted(finished.jobId())
+				);
 			} else if (message instanceof FileChunk fileChunk) {
 
 				JobId jobId = fileChunk.jobId();
@@ -189,6 +262,7 @@ public class WorkstationHandler implements ConnectionHandler {
 					if (jobRegistry.failed(jobId, "Internal server error upon receiving file chunks.")) {
 						context.releaseSlot(); // station is technically free 
 					}
+
 					context.send(new AbortResultTransfer(jobId));
 				}
 			} else if (message instanceof OutputFilesEnd filesEnd) {
@@ -207,15 +281,20 @@ public class WorkstationHandler implements ConnectionHandler {
 
 				if (jobRegistry.finished(filesEnd.jobId())) {
 					context.releaseSlot(); // prevent the release being called twice - internal mechanism would
-					// prevent unexpected value - this prevents double call
+					// prevent unexpected value - this prevents double call (just fancy xD)
 				}
 			} else if (message instanceof JobFailed failed) {
 
-				LOGGER.log(Level.WARNING,
-						"Job with id: %s FAILED. REASON of failure: %s".formatted(failed.jobId().value(), failed.reason()));
+				LOGGER.log(
+						Level.WARNING,
+						"Job with id: %s FAILED. REASON of failure: %s"
+								.formatted(failed.jobId().value(), failed.reason())
+				);
 
-				jobRegistry.failed(failed.jobId(), failed.reason());
-				context.releaseSlot();
+				if (jobRegistry.failed(failed.jobId(), failed.reason())) {
+
+					context.releaseSlot();
+				}
 			} else if (message instanceof Bye ignored) {
 
 				return;

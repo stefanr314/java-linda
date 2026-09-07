@@ -8,6 +8,7 @@ import rs.ac.bg.etf.kdp.common.protocol.JobRunning;
 import rs.ac.bg.etf.kdp.common.protocol.OutputFilesEnd;
 
 import java.io.IOException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Objects;
@@ -63,9 +64,20 @@ public non-sealed class ReporterMessageSink implements JobReporter {
 			if (new FileChunkSender(this.sink::send).sendFiles(jobId, filenames, workDir, () -> false)) {
 				sink.send(new OutputFilesEnd(jobId, filenames)); // mark the end
 			}
+
+		} catch (NoSuchFileException fileNotFound) {
+			LOGGER.log(
+					Level.WARNING,
+					"File was not found. Filename: " + fileNotFound.getFile(),
+					fileNotFound
+			);
 		} catch (IOException e) {
-			LOGGER.log(Level.WARNING, "Could not collected results; The control connection is gone. Results are " +
-					"nowhere to be reported.", e);
+			LOGGER.log(
+					Level.WARNING,
+					"Could not collected results; The control connection is gone. Results are " +
+							"nowhere to be reported.",
+					e
+			);
 		}
 
 	}

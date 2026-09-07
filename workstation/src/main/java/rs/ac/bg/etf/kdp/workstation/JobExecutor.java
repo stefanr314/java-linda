@@ -84,6 +84,7 @@ public final class JobExecutor {
 	 */
 	public void execute(JobId jobId, Path jobDirPath) {
 		Objects.requireNonNull(jobId);
+		Objects.requireNonNull(jobDirPath);
 
 		JobSpec jobSpec = jobSpecification.get(jobId);
 		// run the job
@@ -138,7 +139,7 @@ public final class JobExecutor {
 		RunningJob runningJob;
 		try {
 			// delegate the creation of job
-			runningJob = start(jobId, jobSpec, jobDirPath);
+			runningJob = start(jobSpec, jobDirPath);
 
 			Process process = runningJob.process();
 
@@ -169,7 +170,7 @@ public final class JobExecutor {
 		}
 	}
 
-	private RunningJob start(JobId jobId, JobSpec jobSpec, Path jobDirPath) throws IOException {
+	private RunningJob start(JobSpec jobSpec, Path jobDirPath) throws IOException {
 		// create output dir
 		Path outputDirPath = jobDirPath.resolve("output");
 

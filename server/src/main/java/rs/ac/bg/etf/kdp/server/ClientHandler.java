@@ -5,6 +5,7 @@ import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -118,12 +119,11 @@ public class ClientHandler implements ConnectionHandler {
 				try {
 					fileReceiver.acceptChunkAndWrite(fileChunk, inputDir).ifPresent(filepath -> {
 						LOGGER.info("File received and saved on: " + filepath);
-						// todo: anything else???
 					});
-
-					userContext.send(new FileChunkAck());  // fixme: refactor since its redundant
-				} catch (IOException diskException) {
-					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.", diskException);
+				} catch (IOException | UncheckedIOException diskException) {
+					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.",
+							diskException instanceof UncheckedIOException ?
+									((UncheckedIOException) diskException).getCause() : diskException);
 
 					internalFileRejection(
 							userContext,
@@ -131,10 +131,16 @@ public class ClientHandler implements ConnectionHandler {
 							"Server error occurred whilest working with files. Please try again."
 					);
 				}
-			} else if (received instanceof InputFilesStart ignored) {
-
-				LOGGER.fine("Receiving input files...");
+//			} else if (received instanceof InputFilesStart ignored) {
+//				// fixme can be left out
+//				LOGGER.fine("Receiving input files...");
 			} else if (received instanceof InputFilesEnd filesReceived) {
+
+				// NOTE: this object (set of bytes) represents the SENTINEL VALUE OF input file chunks transfer.
+				// After receiving this object and performing actions this handler thread can collect other job
+				// requests from the same client.
+
+				// todo: check for validity of input files:
 
 				LOGGER.fine("All input file bytes have been received for job:" + filesReceived.jobId().value());
 

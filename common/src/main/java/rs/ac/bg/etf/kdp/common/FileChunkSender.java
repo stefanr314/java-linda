@@ -5,6 +5,7 @@ import rs.ac.bg.etf.kdp.common.protocol.FileChunk;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -73,6 +74,8 @@ public final class FileChunkSender {
 
 				sink.send(new FileChunk(jobId, filename, sequence, new byte[0], true));
 			}
+		} else {
+			throw new NoSuchFileException(filename);
 		}
 
 		return true;

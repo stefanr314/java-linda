@@ -5,7 +5,6 @@ import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
-import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -170,7 +169,7 @@ public class WorkstationHandler implements ConnectionHandler {
 					// todo: handle me
 					LOGGER.log(Level.WARNING, "Disk exception upon creating output dir.", diskException);
 				}
-				
+
 				LOGGER.info("Job %s has been finished. Output results to be received...".formatted(finished.jobId()));
 			} else if (message instanceof FileChunk fileChunk) {
 
@@ -182,8 +181,6 @@ public class WorkstationHandler implements ConnectionHandler {
 				} catch (IOException e) {
 					// these should not break the station down
 					LOGGER.log(Level.SEVERE, "File IO system failed.", e);
-				} catch (UncheckedIOException unchecked) {
-					LOGGER.log(Level.SEVERE, "Unchecked IO exception with cause:", unchecked.getCause());
 				}
 			} else if (message instanceof OutputFilesEnd filesEnd) {
 				LOGGER.info("Results RECEIVED for job: " + filesEnd.jobId().value());

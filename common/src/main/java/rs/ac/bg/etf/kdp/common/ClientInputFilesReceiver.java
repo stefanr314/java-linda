@@ -8,7 +8,7 @@ public final class ClientInputFilesReceiver extends FileChunkReceiver {
 	@Override
 	public Path calculatePath(String chunkFilename, Path basePath) throws IOException {
 		if (Path.of(chunkFilename).getParent() != null) throw new IOException("Only filenames allowed");
-
+		
 		Path filenamePath = basePath.resolve(chunkFilename).normalize();
 
 		if (!filenamePath.startsWith(basePath)) {

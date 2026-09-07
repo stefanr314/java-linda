@@ -4,6 +4,7 @@ import rs.ac.bg.etf.kdp.common.protocol.FileChunk;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -23,11 +24,12 @@ public abstract class FileChunkReceiver {
 	private final Map<Path, OutputStream> openFileDescriptorsMap = new HashMap<>();
 
 	private static OutputStream apply(Path newFilePath) {
-		OutputStream outputStream = null;
+		OutputStream outputStream;
 		try {
 			outputStream = Files.newOutputStream(newFilePath);
 		} catch (IOException e) {
-			LOGGER.severe("Failed to open the stream towards the file. Check the path");
+			LOGGER.severe("Failed to open the stream towards the file. Check the file path.");
+			throw new UncheckedIOException(e);
 		}
 		return outputStream;
 	}

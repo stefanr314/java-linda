@@ -82,7 +82,7 @@ public final class JobContext {
 	}
 
 	public Optional<Instant> completedAt() {
-		return Optional.of(completedAt);
+		return Optional.ofNullable(completedAt);
 	}
 
 	public Optional<String> failureReason() {

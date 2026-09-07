@@ -57,7 +57,7 @@ public final class ClientMain implements AutoCloseable {
 		JobSpec spec = new JobSpec(
 				"job.jar",
 				"java -version",
-				List.of("lib1", "lib2", "lib3"),
+				List.of(),
 				List.of());
 
 		try (ClientMain client = new ClientMain(host, port, "Giampaolo Ricci")) {

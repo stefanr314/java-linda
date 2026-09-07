@@ -208,8 +208,9 @@ public final class WorkstationMain implements AutoCloseable {
 					fileReceiver.acceptChunkAndWrite(chunk, inputPath).ifPresent(filepath -> {
 						LOGGER.info("File received and saved on: " + filepath);
 					});
-				} catch (IOException diskException) {
-					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.", diskException);
+				} catch (IOException | UncheckedIOException diskException) {
+					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.",
+							diskException instanceof UncheckedIOException unchecked ? unchecked.getCause() : diskException);
 
 					reactToFileReceiptFailure(
 							chunk.jobId(),

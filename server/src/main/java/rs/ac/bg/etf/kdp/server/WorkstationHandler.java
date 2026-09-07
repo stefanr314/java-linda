@@ -5,6 +5,7 @@ import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.io.ObjectInput;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -128,7 +129,7 @@ public class WorkstationHandler implements ConnectionHandler {
 					} catch (IOException writeException) {
 						LOGGER.log(Level.WARNING, "IO exception while writing the file chunks; check the paths", writeException);
 						try {
-							context.send(new JobFilesFailure(jobAccepted.jobId(), "Internal server error"));
+							context.send(new JobFilesFailure(jobAccepted.jobId(), "Internal server error."));
 						} catch (IOException e) {
 							// station gone???
 						}
@@ -168,9 +169,8 @@ public class WorkstationHandler implements ConnectionHandler {
 				} catch (IOException diskException) {
 					// todo: handle me
 					LOGGER.log(Level.WARNING, "Disk exception upon creating output dir.", diskException);
-
-					// send back info to station to stop sending more chunks
 				}
+				
 				LOGGER.info("Job %s has been finished. Output results to be received...".formatted(finished.jobId()));
 			} else if (message instanceof FileChunk fileChunk) {
 
@@ -181,7 +181,9 @@ public class WorkstationHandler implements ConnectionHandler {
 					fileChunkReceiver.acceptChunkAndWrite(fileChunk, writeToPath);
 				} catch (IOException e) {
 					// these should not break the station down
-					LOGGER.log(Level.SEVERE, "File IO system failed", e);
+					LOGGER.log(Level.SEVERE, "File IO system failed.", e);
+				} catch (UncheckedIOException unchecked) {
+					LOGGER.log(Level.SEVERE, "Unchecked IO exception with cause:", unchecked.getCause());
 				}
 			} else if (message instanceof OutputFilesEnd filesEnd) {
 				LOGGER.info("Results RECEIVED for job: " + filesEnd.jobId().value());

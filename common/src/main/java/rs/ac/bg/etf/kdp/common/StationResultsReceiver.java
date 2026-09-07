@@ -35,6 +35,12 @@ public final class StationResultsReceiver extends FileChunkReceiver {
 			}
 		}
 
-		return basePath.resolve(normalizedFilename).normalize();
+		Path filenamePath = basePath.resolve(normalizedFilename).normalize();
+
+		if (!filenamePath.startsWith(basePath)) {
+			throw new IOException("Filepath contains path to which it has no access.");
+		}
+
+		return filenamePath;
 	}
 }

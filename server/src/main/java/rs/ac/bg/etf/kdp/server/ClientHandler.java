@@ -6,7 +6,10 @@ import rs.ac.bg.etf.kdp.common.protocol.*;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -24,9 +27,8 @@ public class ClientHandler implements ConnectionHandler {
 
 	private final Path baseDirPath;
 
-	private Path jobDir;
-	private Path inputDir;
 	private JobSpec jobSpec;
+	private JobId currentJobId;
 
 	public ClientHandler(CloseableMessageSink messageSink,
 						 ObjectInput in,
@@ -75,16 +77,21 @@ public class ClientHandler implements ConnectionHandler {
 
 			if (received instanceof JobSubmitCommand jobSubmit) {
 
+				// just support files transfer in sequence.
+				if (jobSpec != null && currentJobId != null
+						&& jobRegistry.find(currentJobId).map(j -> j.status() == JobStatus.RECEIVING).orElse(false)) {
+					userContext.send(new Failure("Finish uploading the previous job first"));
+					continue;
+				}
+
 				// firstly add it to the job registry - create the job id.
 				JobContext job = jobRegistry.register(
-						new JobId(UUID.randomUUID().toString()),
+						(currentJobId = new JobId(UUID.randomUUID().toString())),
 						userContext,
 						(jobSpec = jobSubmit.jobSpec())
 				);
 
-				jobDir = baseDirPath.resolve("job_" + job.jobId().value());
-
-				inputDir = jobDir.resolve("input");
+				Path inputDir = baseDirPath.resolve("job_" + job.jobId().value()).resolve("input");
 
 				try {
 					DirCreator.createDir(inputDir);
@@ -102,19 +109,27 @@ public class ClientHandler implements ConnectionHandler {
 				userContext.send(new JobRegistered(job.jobId()));
 			} else if (received instanceof FileChunk fileChunk) {
 
+				if (jobSpec == null) {
+					// order must be satisfied -> otherwise NPE will arise.
+					userContext.send(new Failure("Received a file chunk before any job was submitted"));
+					continue;
+				}
+
 				boolean fileChunkContainsJobFilename = fileChunk.fileName().equals(jobSpec.jobFilename());
 
 				if (!jobSpec.inputFiles().contains(fileChunk.fileName()) && !fileChunkContainsJobFilename) {
 
 					internalFileRejection(
 							userContext,
-							fileChunk,
+							fileChunk.jobId(),
 							"Constraint on input files broken. Job is " +
 									"rejected and cleaned from server."
 					);
 
 					continue;
 				}
+
+				Path inputDir = baseDirPath.resolve("job_" + fileChunk.jobId().value()).resolve("input");
 
 				try {
 					fileReceiver.acceptChunkAndWrite(fileChunk, inputDir).ifPresent(filepath -> {
@@ -127,22 +142,38 @@ public class ClientHandler implements ConnectionHandler {
 
 					internalFileRejection(
 							userContext,
-							fileChunk,
+							fileChunk.jobId(),
 							"Server error occurred whilest working with files. Please try again."
 					);
 				}
-//			} else if (received instanceof InputFilesStart ignored) {
-//				// fixme can be left out
-//				LOGGER.fine("Receiving input files...");
 			} else if (received instanceof InputFilesEnd filesReceived) {
 
 				// NOTE: this object (set of bytes) represents the SENTINEL VALUE OF input file chunks transfer.
 				// After receiving this object and performing actions this handler thread can collect other job
-				// requests from the same client.
+				// requests from the same client (if TCP guarantees are met) -> this is mandatory in order that
+				// jobSpec holds proper value (otherwise job spec can interleave).
 
-				// todo: check for validity of input files:
+				JobSpec spec = jobRegistry.find(filesReceived.jobId()).orElseThrow().specification();
+				List<String> expected = new ArrayList<>(spec.inputFiles());
+				expected.add(spec.jobFilename());
+
+				Path inputDir = baseDirPath.resolve("job_" + filesReceived.jobId().value()).resolve("input");
+
+				// take the path and check whether exists
+				List<String> missing = expected.stream()
+						.filter(filename -> !Files.isRegularFile(inputDir.resolve(filename)))
+						.toList();
+
+				if (!missing.isEmpty()) {
+					internalFileRejection(userContext, filesReceived.jobId(),
+							"Missing input files: " + missing + ". Please submit again.");
+					continue;
+				}
 
 				LOGGER.fine("All input file bytes have been received for job:" + filesReceived.jobId().value());
+
+				// not mandatory but explicit null-ing rather
+				currentJobId = null;
 
 				// transit state to READY
 				jobRegistry.ready(filesReceived.jobId());
@@ -173,19 +204,19 @@ public class ClientHandler implements ConnectionHandler {
 		}
 	}
 
-	private void internalFileRejection(UserContext userContext, FileChunk fileChunk, String reason) throws IOException {
+	private void internalFileRejection(UserContext userContext, JobId jobId, String reason) throws IOException {
 		// close open files
 		fileReceiver.abandon();
 
 		// delete job dir and everything inside
-		if (jobDir != null)
-			DirCreator.recursivelyDeleteDirOnPath(jobDir);
+		Path jobDir = baseDirPath.resolve("job_" + jobId.value());
+		DirCreator.recursivelyDeleteDirOnPath(jobDir);
 
 		// remove job
-		jobRegistry.remove(fileChunk.jobId());
+		jobRegistry.remove(jobId);
 
 		// constraint broken - declare job rejected
-		userContext.send(new JobFilesFailure(fileChunk.jobId(),
+		userContext.send(new JobFilesFailure(jobId,
 				reason));
 	}
 }

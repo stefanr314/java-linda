@@ -1,6 +1,7 @@
 package rs.ac.bg.etf.kdp.workstation;
 
 import rs.ac.bg.etf.kdp.common.DirCreator;
+import rs.ac.bg.etf.kdp.common.FileChunkSender;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
 
@@ -9,8 +10,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,6 +37,14 @@ public final class JobExecutor {
 	Map of running jobs so they can be manipulated on different occasions
 	 */
 	private final Map<JobId, Process> runningJobs = new ConcurrentHashMap<>();
+
+	/**
+	 * Jobs whose result transfer the server told us to stop. A set rather than a flag on a shared
+	 * object, because the control thread learns about this while the supervising thread is midway
+	 * through streaming, and the two only need to agree on membership.
+	 */
+	private final Set<JobId> abortedTransfers = ConcurrentHashMap.newKeySet();
+
 	private final JobReporter reporter;
 	private final ExecutorService workers;
 
@@ -123,6 +131,17 @@ public final class JobExecutor {
 	}
 
 	/**
+	 * Called from the control thread when the server can no longer store this job's results.
+	 */
+	public void stopResultTransfer(JobId jobId) {
+		abortedTransfers.add(jobId);
+	}
+
+	private boolean transferStopped(JobId jobId) {
+		return abortedTransfers.contains(jobId);
+	}
+
+	/**
 	 * Thread confined code. Working with external structures must be synchronized.
 	 *
 	 * <p>
@@ -158,7 +177,7 @@ public final class JobExecutor {
 			runningJob.stderr().join(2000);
 			runningJob.stdout().join(2000);
 
-			if (exitCode == 0) reporter.finished(new CollectedResults(jobId, jobSpec, runningJob.resultDir()));
+			if (exitCode == 0) deliverResults(jobId, jobSpec, jobDirPath);
 			else reporter.failed(jobId, "exit code " + exitCode);
 		} catch (IOException failedToStart) {
 			reporter.failed(jobId, failedToStart.getMessage());
@@ -171,7 +190,30 @@ public final class JobExecutor {
 		} finally {
 			runningJobs.remove(jobId);
 			jobSpecification.remove(jobId);
+			abortedTransfers.remove(jobId);
+
+			// station can receive new jobs now
 			acceptedJobs.decrementAndGet();
+		}
+	}
+
+	private void deliverResults(JobId jobId, JobSpec spec, Path workDir) {
+		reporter.finished(jobId);
+
+		List<String> produced = new ArrayList<>(spec.outputFiles());
+
+		produced.add("logs/stdout.log");
+		produced.add("logs/stderr.log");
+
+		try {
+			if (new FileChunkSender(reporter::sendChunk)
+					.sendFiles(jobId, produced, workDir, () -> transferStopped(jobId))) {
+				reporter.outputFilesEnd(jobId, produced);
+			} else {
+				LOGGER.log(Level.WARNING, "Server aborted the result transfer for {0}", jobId);
+			}
+		} catch (IOException e) {
+			LOGGER.log(Level.WARNING, "Result transfer for " + jobId + " failed", e);
 		}
 	}
 

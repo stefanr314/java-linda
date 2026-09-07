@@ -167,20 +167,29 @@ public class WorkstationHandler implements ConnectionHandler {
 					DirCreator.createDir(outputDirPath);
 				} catch (IOException diskException) {
 					// todo: handle me
-					LOGGER.log(Level.WARNING, "Disk exception upon creating output dir.", diskException);
+					LOGGER.log(Level.SEVERE, "Disk exception upon creating output dir.", diskException);
 				}
 
 				LOGGER.info("Job %s has been finished. Output results to be received...".formatted(finished.jobId()));
 			} else if (message instanceof FileChunk fileChunk) {
 
-				try {
-					JobId jobId = fileChunk.jobId();
-					Path writeToPath = baseDirPath.resolve("job_" + jobId.value()).resolve("output");
+				JobId jobId = fileChunk.jobId();
+				Path outputDir = baseDirPath.resolve("job_" + jobId.value()).resolve("output");
 
-					fileChunkReceiver.acceptChunkAndWrite(fileChunk, writeToPath);
-				} catch (IOException e) {
-					// these should not break the station down
-					LOGGER.log(Level.SEVERE, "File IO system failed.", e);
+				try {
+					fileChunkReceiver.acceptChunkAndWrite(fileChunk, outputDir);
+				} catch (IOException diskException) {
+
+					LOGGER.log(Level.SEVERE, "Could not store results for " + jobId, diskException);
+
+					fileChunkReceiver.abandon();
+					DirCreator.recursivelyDeleteDirOnPath(outputDir);
+
+					// results could not be collected properly -> JOB MUST NOT REACH DONE STATE
+					if (jobRegistry.failed(jobId, "Internal server error upon receiving file chunks.")) {
+						context.releaseSlot(); // station is technically free 
+					}
+					context.send(new AbortResultTransfer(jobId));
 				}
 			} else if (message instanceof OutputFilesEnd filesEnd) {
 				LOGGER.info("Results RECEIVED for job: " + filesEnd.jobId().value());
@@ -194,8 +203,12 @@ public class WorkstationHandler implements ConnectionHandler {
 					return returnMessage.toString();
 				});
 
-				jobRegistry.finished(filesEnd.jobId());
-				context.releaseSlot();
+				// todo something with output files ???
+
+				if (jobRegistry.finished(filesEnd.jobId())) {
+					context.releaseSlot(); // prevent the release being called twice - internal mechanism would
+					// prevent unexpected value - this prevents double call
+				}
 			} else if (message instanceof JobFailed failed) {
 
 				LOGGER.log(Level.WARNING,

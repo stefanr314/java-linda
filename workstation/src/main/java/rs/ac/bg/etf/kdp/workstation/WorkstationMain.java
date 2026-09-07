@@ -238,6 +238,13 @@ public final class WorkstationMain implements AutoCloseable {
 				// server suffered internal error - delete input dir
 				reactToFileReceiptFailure(filesFailure.jobId(), () -> {
 				});
+			} else if (received instanceof AbortResultTransfer abortResultTransfer) {
+				// raise the flag to stop the
+				LOGGER.info("Server suffered internal error while receiving results for job id: "
+						+ abortResultTransfer.jobId().value());
+
+				jobExecutor.stopResultTransfer(abortResultTransfer.jobId());
+				
 			} else if (received instanceof JobNotPresent jobNotPresent) {
 				// do something ??
 				LOGGER.log(Level.WARNING, "Job not recognized by server. Job id: " + jobNotPresent.jobId().value());

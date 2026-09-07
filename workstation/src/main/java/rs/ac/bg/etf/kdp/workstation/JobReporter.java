@@ -1,6 +1,10 @@
 package rs.ac.bg.etf.kdp.workstation;
 
 import rs.ac.bg.etf.kdp.common.JobId;
+import rs.ac.bg.etf.kdp.common.protocol.FileChunk;
+
+import java.io.IOException;
+import java.util.List;
 
 /**
  * Reports job progress <em>to the server</em>. Best-effort by design: every method swallows transport
@@ -18,11 +22,11 @@ public sealed interface JobReporter permits ReporterMessageSink {
 	void running(JobId jobId);
 
 	/**
-	 * Report finished status of job. This method (indirectly) sends results back to server.
+	 * Report finished status of job.
 	 *
-	 * @param results collected results with all metadata.
+	 * @param jobId id of finished job
 	 */
-	void finished(CollectedResults results);
+	void finished(JobId jobId);
 
 	/**
 	 * Report failed status of job.
@@ -31,4 +35,20 @@ public sealed interface JobReporter permits ReporterMessageSink {
 	 * @param reason reason of failure.
 	 */
 	void failed(JobId jobId, String reason);
+
+	/**
+	 * Method for sending the file chunks of results to server.
+	 *
+	 * @param chunk file chunk holding data.
+	 * @throws IOException upon working with sinker.
+	 */
+	void sendChunk(FileChunk chunk) throws IOException;
+
+	/**
+	 * Method for sending sentinel value to notify all results sent.
+	 *
+	 * @param jobId          id of job which results have been sent.
+	 * @param deliveredFiles all delivered files.
+	 */
+	void outputFilesEnd(JobId jobId, List<String> deliveredFiles);
 }

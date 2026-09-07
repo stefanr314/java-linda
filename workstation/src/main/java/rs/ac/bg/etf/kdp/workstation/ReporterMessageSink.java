@@ -1,17 +1,13 @@
 package rs.ac.bg.etf.kdp.workstation;
 
-import rs.ac.bg.etf.kdp.common.FileChunkSender;
 import rs.ac.bg.etf.kdp.common.JobId;
+import rs.ac.bg.etf.kdp.common.protocol.FileChunk;
 import rs.ac.bg.etf.kdp.common.protocol.JobFailed;
-import rs.ac.bg.etf.kdp.common.protocol.JobFinished;
 import rs.ac.bg.etf.kdp.common.protocol.JobRunning;
 import rs.ac.bg.etf.kdp.common.protocol.OutputFilesEnd;
 
 import java.io.IOException;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Objects;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -32,62 +28,36 @@ public non-sealed class ReporterMessageSink implements JobReporter {
 
 	@Override
 	public void running(JobId jobId) {
-		try {
-			sink.send(new JobRunning(jobId));
-		} catch (IOException e) {
-			LOGGER.log(Level.WARNING, "Could not report running of " + jobId
-					+ "; the control connection is gone", e);
-		}
+		trySend(new JobRunning(jobId), "running of job with id: " + jobId.value());
 	}
 
 	@Override
-	public void finished(CollectedResults collectedResults) {
-		try {
-			Objects.requireNonNull(collectedResults);
-
-			sink.send(new JobFinished(collectedResults.jobId()));
-
-			JobId jobId = collectedResults.jobId();
-			ArrayList<String> filenames = new ArrayList<>(collectedResults.spec().outputFiles());
-
-			// send the loggers too
-			Path logs = Path.of("logs");
-			String stdoutLog = logs.resolve("stdout.log").toString();
-			String stderrLog = logs.resolve("stderr.log").toString();
-
-			filenames.add(stderrLog);
-			filenames.add(stdoutLog);
-
-			Path workDir = collectedResults.resultDir();
-
-			// delegate to structure that knows how to read files and send FileChunks over the net
-			if (new FileChunkSender(this.sink::send).sendFiles(jobId, filenames, workDir, () -> false)) {
-				sink.send(new OutputFilesEnd(jobId, filenames)); // mark the end
-			}
-
-		} catch (NoSuchFileException fileNotFound) {
-			LOGGER.log(
-					Level.WARNING,
-					"File was not found. Filename: " + fileNotFound.getFile(),
-					fileNotFound
-			);
-		} catch (IOException e) {
-			LOGGER.log(
-					Level.WARNING,
-					"Could not collected results; The control connection is gone. Results are " +
-							"nowhere to be reported.",
-					e
-			);
-		}
-
+	public void finished(JobId jobId) {
+		trySend(new JobRunning(jobId), "finish of job with id: " + jobId.value());
 	}
 
 	@Override
 	public void failed(JobId jobId, String reason) {
+		trySend(new JobFailed(jobId, reason), "failure of job with id: " + jobId);
+	}
+
+	@Override
+	public void sendChunk(FileChunk chunk) throws IOException {
+		// The only reporting method that propagates: a dead connection mid-transfer must stop the
+		// sender, whereas a lost status report has nothing left to achieve.
+		sink.send(chunk);
+	}
+
+	@Override
+	public void outputFilesEnd(JobId jobId, List<String> deliveredFiles) {
+		trySend(new OutputFilesEnd(jobId, deliveredFiles), "end of results for " + jobId);
+	}
+
+	private void trySend(Object message, String what) {
 		try {
-			sink.send(new JobFailed(jobId, reason));
+			sink.send(message);
 		} catch (IOException e) {
-			LOGGER.log(Level.WARNING, "Could not report failure of " + jobId
+			LOGGER.log(Level.WARNING, "Could not report " + what
 					+ "; the control connection is gone", e);
 		}
 	}

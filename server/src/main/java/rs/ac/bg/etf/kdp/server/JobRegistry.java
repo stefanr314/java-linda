@@ -160,9 +160,10 @@ public final class JobRegistry {
 	 * final act in this chain of job result retrieval.</p>
 	 *
 	 * @param jobId id of job that transits to {@link JobStatus#DONE} state.
+	 * @return true if status is set to {@link JobStatus#DONE}; false otherwise.
 	 */
-	public void finished(JobId jobId) {
-		transit(jobId, JobStatus.DONE, job -> {
+	public boolean finished(JobId jobId) {
+		return transit(jobId, JobStatus.DONE, job -> {
 		});
 	}
 
@@ -172,6 +173,7 @@ public final class JobRegistry {
 	 *
 	 * @param jobId  id of failed job.
 	 * @param reason reason of job failure.
+	 * @return true if status is set to {@link JobStatus#FAILED}; false otherwise.
 	 */
 	public boolean failed(JobId jobId, String reason) {
 		return transit(jobId, JobStatus.FAILED, jobContext -> {

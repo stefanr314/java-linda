@@ -125,12 +125,13 @@ public class WorkstationHandler implements ConnectionHandler {
 				context.send(new Pong(ping.timeNanos()));
 			} else if (message instanceof JobAccepted jobAccepted) {
 
+				JobId jobId = jobAccepted.jobId();
 				LOGGER.info("Workstation: %s has accepted the job: %s. Job is not yet started"
-						.formatted(context.hostName(), jobAccepted.jobId()));
+						.formatted(context.hostName(), jobId));
 
-				JobContext job = getJob(jobAccepted.jobId());
+				JobContext job = getJob(jobId);
 				if (job == null) {
-					context.send(new JobNotPresent(jobAccepted.jobId()));
+					context.send(new JobNotPresent(jobId));
 					continue;
 				}
 
@@ -140,21 +141,21 @@ public class WorkstationHandler implements ConnectionHandler {
 				filenames.add(specification.jobFilename());
 
 				Path jobInputDir = baseDirPath
-						.resolve("job_" + jobAccepted.jobId().value())
+						.resolve("job_" + jobId.value())
 						.resolve("input");
 
 				chunkWriters.submit(() -> {
 					try {
-						context.send(new InputFilesStart());
+						context.send(new InputFilesStart(jobId));
 
 						if (new FileChunkSender(context::send).sendFiles(
-								jobAccepted.jobId(),
+								jobId,
 								filenames,
 								jobInputDir,
 								() -> job.isFileTransmissionStopped() || Thread.currentThread().isInterrupted())
 						) {
 
-							context.send(new InputFilesEnd(jobAccepted.jobId()));
+							context.send(new InputFilesEnd(jobId));
 						} else if (!Thread.currentThread().isInterrupted()) {
 							job.resetFileTransmission();
 						}
@@ -167,28 +168,27 @@ public class WorkstationHandler implements ConnectionHandler {
 
 						try {
 							context.send(
-									new JobFilesFailure(jobAccepted.jobId(), "Internal server error.")
+									new JobFilesFailure(jobId, "Internal server error.")
 							);
 						} catch (IOException ignored) {
 							// station gone anyway - do nothing
 						}
 
-						if (jobRegistry.failed(jobAccepted.jobId(), "Input files unreadable on the server")) {
+						if (jobRegistry.failed(jobId, "Input files unreadable on the server")) {
 							context.releaseSlot();
 						}
 
 					} catch (IOException writeException) {
+						// station is gone here probably so try to reschedule the job once again.
+
 						LOGGER.log(
 								Level.WARNING,
-								"IO exception while writing the file chunks; check the paths",
+								"IO exception while writing the file chunks. Station is possible gone.",
 								writeException
 						);
 
-						// A missing file or a disk error on server side fails one
-						// transfer without touching the connection. Its slot is still reserved for a job that will
-						// never arrive, so give it back.
 						context.releaseSlot();
-						jobRegistry.requeued(jobAccepted.jobId());
+						jobRegistry.requeued(jobId);
 
 						// try rescheduling it back
 						scheduler.scheduleReadyJobs();
@@ -217,6 +217,7 @@ public class WorkstationHandler implements ConnectionHandler {
 				context.releaseSlot();
 
 				// change the status of job (was scheduled) and put it back to the ready
+				// note: is there a way to not schedule it back to same station...
 				jobRegistry.requeued(rejected.jobId());
 
 				// try rescheduling it back

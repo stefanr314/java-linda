@@ -29,7 +29,7 @@ public final class JobExecutor {
 
 	/*
 	Map for remembering the job specification between the initial call for job dispatch and receiving the sentinel
-	value depicting the input files transfer end.
+	value depicting the input files transfer end. In this phase job is not yet started.
 	 */
 	private final Map<JobId, JobSpec> jobSpecification = new ConcurrentHashMap<>();
 
@@ -101,7 +101,9 @@ public final class JobExecutor {
 	}
 
 	/**
-	 * Release all occupied resources prior to execution of job i.e. in input file transfer phase.
+	 * Release all occupied resources upon initial breakage of files (prior to execution of job i.e. in input file
+	 * transfer suffered malfunction).
+	 * <p>This method must be called <em>on every failure path possible upon receipt of input files.</p>
 	 *
 	 * @param jobId id of job that must be released/cleaned after.
 	 */
@@ -202,8 +204,8 @@ public final class JobExecutor {
 
 		List<String> produced = new ArrayList<>(spec.outputFiles());
 
-		produced.add("logs/stdout.log");
-		produced.add("logs/stderr.log");
+		produced.add("output/logs/stdout.log");
+		produced.add("output/logs/stderr.log");
 
 		try {
 			if (new FileChunkSender(reporter::sendChunk)
@@ -211,6 +213,8 @@ public final class JobExecutor {
 				reporter.outputFilesEnd(jobId, produced);
 			} else {
 				LOGGER.log(Level.WARNING, "Server aborted the result transfer for {0}", jobId);
+				// fixme here the results are still present on the station side so server can demand them again;
+				//  think about this
 			}
 		} catch (IOException e) {
 			LOGGER.log(Level.WARNING, "Result transfer for " + jobId + " failed", e);
@@ -233,6 +237,9 @@ public final class JobExecutor {
 		String[] commandAndArgs = jobSpec.command().split(" ");
 
 		// create the process with process builder - and run in separated directory (job specific directory)
+		// fixme there is no way for process to know about output dir path nor about the input dir (this one is just
+		//  for startup so it's fine to handle it straight away) and since output files are just filenames they will
+		//  be written to the job dir path
 		ProcessBuilder processBuilder = new ProcessBuilder(commandAndArgs).directory(jobDirPath.toFile());
 		Process job = processBuilder.start();
 

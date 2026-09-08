@@ -59,7 +59,10 @@ public final class WorkstationMain implements AutoCloseable {
 		this.sink = new ObjectMessageSink(out);
 
 		this.parallelismCapacity = capacity;
-		this.workers = Executors.newFixedThreadPool(parallelismCapacity, (runner) -> new Thread(runner, "worker-"));
+		this.workers = Executors.newFixedThreadPool(
+				parallelismCapacity,
+				(runner) -> new Thread(runner, "worker-")
+		);
 
 		this.reporter = new ReporterMessageSink(sink);
 
@@ -81,9 +84,15 @@ public final class WorkstationMain implements AutoCloseable {
 			return;
 		}
 
-		String serverHostname = getFromKeyOptionsOrDefault(mappedArgs, new String[]{"host", "h"}, "localhost");
-		int serverPort = Integer.parseInt(getFromKeyOptionsOrDefault(mappedArgs, new String[]{"port", "p"}, "4040"));
-		int capacity = Integer.parseInt(getFromKeyOptionsOrDefault(mappedArgs, new String[]{"capacity", "c"}, "2"));
+		String serverHostname = getFromKeyOptionsOrDefault(
+				mappedArgs, new String[]{"host", "h"}, "localhost"
+		);
+		int serverPort = Integer.parseInt(getFromKeyOptionsOrDefault(
+				mappedArgs, new String[]{"port", "p"}, "4040")
+		);
+		int capacity = Integer.parseInt(
+				getFromKeyOptionsOrDefault(mappedArgs, new String[]{"capacity", "c"}, "2")
+		);
 
 		try (WorkstationMain workstation = new WorkstationMain(serverHostname, serverPort, capacity)) {
 			LOGGER.info(workstation.workstationInfo().toString());
@@ -156,8 +165,11 @@ public final class WorkstationMain implements AutoCloseable {
 			LOGGER.log(Level.INFO, "Server closed its socket or an end of communication reached.");
 		} catch (SocketTimeoutException timeout) {
 			// this is the part for reconnecting with the server if server available
-			LOGGER.log(Level.INFO, "Server unreachable. Try reconnecting. This implementation just closes the socket " +
-					"and terminates");
+			LOGGER.log(
+					Level.INFO,
+					"Server unreachable. Try reconnecting. This implementation just closes the socket " +
+							"and terminates"
+			);
 		} catch (IOException | ClassNotFoundException e) {
 			LOGGER.log(Level.SEVERE, "Error upon trying to communicate with the server: " + e.getMessage(), e);
 		}
@@ -181,26 +193,35 @@ public final class WorkstationMain implements AutoCloseable {
 				sink.send(new Pong(ping.timeNanos()));
 			} else if (received instanceof Pong pong) {
 				// server is alive - separate thread required for connection check
+				// fixme dead code currently - low priority
 			} else if (received instanceof JobDispatch jobDispatch) {
+				// initial message request from server's scheduler (INPUT FLOW)
 
 				if (jobExecutor.accept(jobDispatch.jobId(), jobDispatch.jobSpec())) {
-					Path inputPath = BASE_PATH.resolve("job_" + jobDispatch.jobId().value()).resolve("input");
-
-					try {
-						DirCreator.createDir(inputPath);
-					} catch (IOException diskException) {
-						LOGGER.log(Level.WARNING, "Internal disk exception. Dir creation failed", diskException);
-
-						sink.send(new JobRejected(jobDispatch.jobId(), "Internal disk error."));
-						continue;
-					}
 
 					sink.send(new JobAccepted(jobDispatch.jobId()));
 				} else {
 
 					sink.send(new JobRejected(jobDispatch.jobId(), "All workers occupied."));
 				}
+			} else if (received instanceof InputFilesStart inputFilesStart) {
+				// initial introductory message for start of receipt of input files (INPUT FLOW)
+
+				Path inputPath = BASE_PATH
+						.resolve("job_" + inputFilesStart.jobId().value())
+						.resolve("input");
+
+				try {
+					DirCreator.createDir(inputPath);
+				} catch (IOException diskException) {
+					LOGGER.log(Level.WARNING, "Internal disk exception. Dir creation failed", diskException);
+
+					sink.send(new JobRejected(inputFilesStart.jobId(), "Internal disk error."));
+
+					jobExecutor.jobReleaser(inputFilesStart.jobId());
+				}
 			} else if (received instanceof FileChunk chunk) {
+				// path for receiving input files in chunks (INPUT FLOW)
 
 				Path inputPath = BASE_PATH.resolve("job_" + chunk.jobId().value()).resolve("input");
 
@@ -211,20 +232,30 @@ public final class WorkstationMain implements AutoCloseable {
 							)
 					);
 				} catch (IOException diskException) {
-					LOGGER.log(Level.WARNING, "Error when working with files. Disk exception happened.",
-							diskException);
+					LOGGER.log(
+							Level.WARNING,
+							"Error when working with files. Disk exception happened.",
+							diskException
+					);
 
 					reactToFileReceiptFailure(
 							chunk.jobId(),
 							() -> {
 								try {
 									sink.send(
-											new JobRejected(chunk.jobId(),
+											new JobRejected(
+													chunk.jobId(),
 													"Error upon receiving job input files. " +
-															"Input files have not been received.")
+															"Input files have not been received."
+											)
 									);
 								} catch (IOException e) {
-									LOGGER.log(Level.WARNING, "Unable to send job rejection to server.", e);
+									LOGGER.log(
+											Level.WARNING,
+											"Unable to send job rejection to server. Socket " +
+													"communication broken.",
+											e
+									);
 								}
 							}
 					);
@@ -243,18 +274,21 @@ public final class WorkstationMain implements AutoCloseable {
 				reactToFileReceiptFailure(filesFailure.jobId(), () -> {
 				});
 			} else if (received instanceof AbortResultTransfer abortResultTransfer) {
-				// raise the flag to stop the
+				// raise the flag to stop the transfer of file chunks (OUTPUT FLOW)
+
 				LOGGER.info("Server suffered internal error while receiving results for job id: "
 						+ abortResultTransfer.jobId().value());
 
 				jobExecutor.stopResultTransfer(abortResultTransfer.jobId());
-				
+
 			} else if (received instanceof JobNotPresent jobNotPresent) {
-				// do something ??
+				// job was not found on server (INPUT FLOW)
+
+				// fixme do something ??
 				LOGGER.log(
 						Level.WARNING,
 						"Job not recognized by server. Job id: "
-						+ jobNotPresent.jobId().value()
+								+ jobNotPresent.jobId().value()
 				);
 			} else if (received instanceof Bye ignored) {
 				LOGGER.info("Server sent bye message.");

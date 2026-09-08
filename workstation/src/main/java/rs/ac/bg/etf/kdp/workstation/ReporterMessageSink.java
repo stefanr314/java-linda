@@ -1,10 +1,7 @@
 package rs.ac.bg.etf.kdp.workstation;
 
 import rs.ac.bg.etf.kdp.common.JobId;
-import rs.ac.bg.etf.kdp.common.protocol.FileChunk;
-import rs.ac.bg.etf.kdp.common.protocol.JobFailed;
-import rs.ac.bg.etf.kdp.common.protocol.JobRunning;
-import rs.ac.bg.etf.kdp.common.protocol.OutputFilesEnd;
+import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.IOException;
 import java.util.List;
@@ -33,7 +30,7 @@ public non-sealed class ReporterMessageSink implements JobReporter {
 
 	@Override
 	public void finished(JobId jobId) {
-		trySend(new JobRunning(jobId), "finish of job with id: " + jobId.value());
+		trySend(new JobFinished(jobId), "finish of job with id: " + jobId.value());
 	}
 
 	@Override

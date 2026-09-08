@@ -77,7 +77,7 @@ public abstract class FileChunkReceiver {
 
 		int expected = expectedSequence.getOrDefault(filePath, 0);
 		if (chunk.sequence() != expected) {
-			openFileDescriptorsMap.remove(filePath);   // stream is closed by abandon() IOException is trigger
+			openFileDescriptorsMap.remove(filePath).close();
 			expectedSequence.remove(filePath);
 			throw new IOException("Out-of-order chunk for %s: expected %d, got %d"
 					.formatted(chunk.fileName(), expected, chunk.sequence()));

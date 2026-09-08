@@ -153,9 +153,7 @@ public class ClientHandler implements ConnectionHandler {
 				try {
 					fileReceiver.acceptChunkAndWrite(fileChunk, inputDir)
 							.ifPresent(filepath -> {
-
 								LOGGER.info("File received and saved on: " + filepath); // these logs are too verbose
-
 							});
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING,
@@ -184,7 +182,8 @@ public class ClientHandler implements ConnectionHandler {
 						.resolve("input");
 
 				// take the path and check whether exists
-				List<String> missing = expected.stream()
+				List<String> missing = expected
+						.stream()
 						.filter(filename -> !Files.isRegularFile(inputDir.resolve(filename)))
 						.toList();
 

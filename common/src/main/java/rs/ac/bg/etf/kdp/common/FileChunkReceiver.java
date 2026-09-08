@@ -102,6 +102,8 @@ public abstract class FileChunkReceiver {
 	 *
 	 */
 	public void abandon() {
+		if (openFileDescriptorsMap.isEmpty() && expectedSequence.isEmpty()) return;
+
 		for (OutputStream out : openFileDescriptorsMap.values()) {
 			try {
 				out.close();

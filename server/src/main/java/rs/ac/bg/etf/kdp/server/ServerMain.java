@@ -4,13 +4,11 @@ import rs.ac.bg.etf.kdp.common.HeartbeatPolicy;
 import rs.ac.bg.etf.kdp.common.protocol.Failure;
 import rs.ac.bg.etf.kdp.common.protocol.Hello;
 
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -32,22 +30,32 @@ public final class ServerMain implements AutoCloseable {
 	private static final long HEARTBEAT_INTERVAL_MILLIS = TimeUnit.SECONDS.toMillis(10);
 	private static final long HEARTBEAT_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(30);
 
+	private static final int HANDSHAKE_TIMEOUT_MILLIS = (int) TimeUnit.SECONDS.toMillis(5);
+
+	private static final int REGULAR_COMMUNICATION_TIMEOUT_MILLIS = (int) TimeUnit.SECONDS.toMillis(60);
+
+	static {
+
+		var filter = ObjectInputFilter.Config.createFilter(
+				"maxdepth=15;" +
+						"maxarray=100000;" +
+						"rs.ac.bg.etf.**;" +
+						"java.util.*;java.lang.*;java.time.*;java.io.*;" +
+						"!*"
+		);
+
+		ObjectInputFilter.Config.setSerialFilter(filter);
+	}
+
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
-
 	private final JobLog jobLog = new JobLog();
-
 	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
-
 	private final JobRegistry jobRegistry = new JobRegistry(jobLog);
-
 	private final Scheduler scheduler = new Scheduler(jobRegistry, workstationRegistry);
 	private final HeartbeatDaemon heartbeat;
-
 	private final ConnectionHandlerFactory connectionHandlerFactory;
-
 	private final Map<Socket, Boolean> connections = new ConcurrentHashMap<>();
-
 	private volatile boolean running;
 
 	public ServerMain(int port) throws IOException {
@@ -103,6 +111,9 @@ public final class ServerMain implements AutoCloseable {
 		try {
 			while (running) {
 				Socket accepted = serverSocket.accept();
+
+				accepted.setSoTimeout(HANDSHAKE_TIMEOUT_MILLIS);  // to prevent silent clients
+
 				connections.put(accepted, Boolean.TRUE);
 				executor.submit(() -> handle(accepted));
 			}
@@ -137,13 +148,30 @@ public final class ServerMain implements AutoCloseable {
 					return;
 				}
 
+				socket.setSoTimeout(REGULAR_COMMUNICATION_TIMEOUT_MILLIS);
+
 				connectionHandlerFactory.getHandler(hello, messageSink, in).run();
 			}
 		} catch (EOFException | SocketException e) {
 			// normal behaviour upon receiving sentinel value from other ended communication side;
 			// or closing the socket
+		} catch (SocketTimeoutException timeout) {
+			LOGGER.log(Level.INFO,
+					"Silent client triggered the timeout to elapse.",
+					socket.getInetAddress());
+
+		} catch (StreamCorruptedException foreignClient) {
+			LOGGER.log(Level.WARNING,
+					"Foreign client requested connection. IP: {0} Port: {1}",
+					new Object[]{socket.getInetAddress(), socket.getPort()});
+		} catch (InvalidClassException inputFilterFailed) {
+			// input filter was not satisfied
+			LOGGER.log(Level.INFO,
+					"Input filter for java serialization failed. Reason: "
+							+ inputFilterFailed.getMessage(),
+					socket.getInetAddress());
 		} catch (IOException | ClassNotFoundException e) {
-			LOGGER.log(Level.SEVERE,
+			LOGGER.log(Level.WARNING,
 					"Exception of type" + e.getClass().getSimpleName()
 							+ " occurred with message: " + e.getMessage(), e);
 		} finally {

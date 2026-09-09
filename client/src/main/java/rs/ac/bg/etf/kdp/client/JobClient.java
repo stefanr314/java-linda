@@ -6,15 +6,14 @@ import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.JobStatus;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.StreamCorruptedException;
+import java.io.*;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,20 +34,26 @@ import java.util.logging.Logger;
 public final class JobClient implements AutoCloseable {
 
 	private static final Logger LOGGER = Logger.getLogger(JobClient.class.getName());
-
 	/**
 	 * Read timeout on the socket. Generous, because a large upload can put seconds between
 	 * messages, but finite so a vanished server does not hang the client forever,
 	 */
 	private static final int READ_TIMEOUT_MILLIS = 60_000;
 
-	private static final Path DEFAULT_HISTORY_FILE = Path.of("job-history.log");
+	private static final int HANDSHAKE_TIMEOUT_MILLIS = (int) TimeUnit.SECONDS.toMillis(5);
 
+	private static final Path DEFAULT_HISTORY_FILE = Path.of("job-history.log");
 	private final String serverHost;
 	private final int serverPort;
 	private final String user;
 	private final JobHistory history;
-
+	private final ObjectInputFilter filter = ObjectInputFilter.Config.createFilter(
+			"maxdepth=15;" +
+					"maxarray=100000;" +
+					"rs.ac.bg.etf.**;" +
+					"java.util.*;java.lang.*;java.time.*;java.io.*;" +
+					"!*"
+	);
 	private Socket socket;
 	private ObjectOutputStream out;
 	private ObjectInputStream in;
@@ -90,20 +95,28 @@ public final class JobClient implements AutoCloseable {
 		try {
 			newOut = new ObjectOutputStream(newSocket.getOutputStream());
 			newOut.flush();
+
+			newSocket.setSoTimeout(HANDSHAKE_TIMEOUT_MILLIS);  // early fail silent server
 			newIn = new ObjectInputStream(newSocket.getInputStream());
 		} catch (StreamCorruptedException notOurServer) {
 			newSocket.close();
 			throw new IOException(
 					"Server at " + serverHost + ":" + serverPort + " does not speak the java-linda protocol",
 					notOurServer);
+		} catch (SocketTimeoutException timeout) {
+			newSocket.close();
+			throw timeout;
 		} catch (IOException failure) {
 			newSocket.close();
 			throw failure;
 		}
 
+		newSocket.setSoTimeout(READ_TIMEOUT_MILLIS);  // reset back
 		socket = newSocket;
 		out = newOut;
 		in = newIn;
+
+		in.setObjectInputFilter(filter);
 
 		try {
 			send(new ClientHello(user));

@@ -28,3 +28,6 @@ dependency-reduced-pom.xml
 
 # perosnal notes
 NOTES.md
+
+# internal txt files
+/client/*.txt

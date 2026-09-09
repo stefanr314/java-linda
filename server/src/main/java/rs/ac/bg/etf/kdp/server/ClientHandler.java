@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -68,7 +69,7 @@ public class ClientHandler implements ConnectionHandler {
 			userContext.disconnect();  // close the user context
 
 			// close all open input files
-			fileReceiver.abandon();
+			fileReceiver.abandon();  // this function is pure so calling it more than once yields the same outcome
 
 			// remove from registry all jobs with status RECEIVING - there can be only one such file since input
 			// files transfer is sequential
@@ -81,9 +82,6 @@ public class ClientHandler implements ConnectionHandler {
 
 				Path jobPath = baseDirPath.resolve("job_" + currentJobId.value());
 				DirCreator.recursivelyDeleteDirOnPath(jobPath);
-
-				// this job serves no point just delete it.
-				jobRegistry.remove(currentJobId);
 			}
 		}
 	}
@@ -99,6 +97,7 @@ public class ClientHandler implements ConnectionHandler {
 						&& jobRegistry.find(currentJobId)
 						.map(j -> j.status() == JobStatus.RECEIVING)
 						.orElse(false)) {
+
 					userContext.send(new Failure("Finish uploading the previous job first"));
 					continue;
 				}
@@ -110,23 +109,46 @@ public class ClientHandler implements ConnectionHandler {
 						(jobSpec = jobSubmit.jobSpec())
 				);
 
-				Path inputDir = baseDirPath.resolve("job_" + job.jobId().value()).resolve("input");
+				// send the confirmation
+				userContext.send(new JobRegistered(job.jobId()));
+			} else if (received instanceof InputFilesStart inputFilesStart) {
+				JobId jobId = inputFilesStart.jobId();
+
+				if (jobRegistry.find(jobId).isEmpty()) {
+					continue;  // early return if someone managed to outpass the initial intro message
+				}
+
+				Path inputDir = baseDirPath.resolve("job_" + jobId.value()).resolve("input");
 
 				try {
 					DirCreator.createDir(inputDir);
+					userContext.send(new ReadyToAcceptInputFiles(jobId));
 				} catch (IOException diskException) {
 
 					LOGGER.log(Level.WARNING, "Creation of input dir failed.", diskException);
-					userContext.send(new JobFilesFailure(job.jobId(),
+					userContext.send(new JobFilesFailure(
+							jobId,
 							"Job was rejected due to error on server. Please try again later."));
-					jobRegistry.remove(job.jobId());
+					// since it was present in job registry and in job log just mark that in log somewhere
+					jobRegistry.failed(jobId, "Unexpected input dir creation failure.");
 
-					continue;
+					// this entry job serves no point just deleting it
+					jobRegistry.remove(jobId);
+
+					// since job receipt failed just null all this fields
+					currentJobId = null;
+					jobSpec = null;
 				}
 
-				// send the confirmation
-				userContext.send(new JobRegistered(job.jobId()));
 			} else if (received instanceof FileChunk fileChunk) {
+
+				// this part is mandatory since client never stops file chunk sending mid-way but server must protect
+				// against this
+				Optional<JobContext> jobContext = jobRegistry.find(fileChunk.jobId());
+				if (jobContext.isEmpty() || jobContext.get().status() != JobStatus.RECEIVING) {
+
+					continue;  // early return otherwise file receiver will work with non-existent files
+				}
 
 				if (jobSpec == null) {
 					// order must be satisfied -> otherwise NPE will arise.
@@ -173,7 +195,19 @@ public class ClientHandler implements ConnectionHandler {
 				// requests from the same client (if TCP guarantees are met) -> this is mandatory in order that
 				// jobSpec holds proper value (otherwise job spec can interleave).
 
-				JobSpec spec = jobRegistry.find(filesReceived.jobId()).orElseThrow().specification();
+				Optional<JobContext> optionalJob = jobRegistry
+						.find(filesReceived.jobId());
+
+				JobContext job;
+				if (optionalJob.isEmpty() || (job = optionalJob.get()).status() != JobStatus.RECEIVING) {
+					userContext.send(
+							new JobFilesFailure(filesReceived.jobId(),
+									"Server could not accept the job; try again later")
+					);
+					continue;  // return early
+				}
+				JobSpec spec = job.specification();
+
 				List<String> expected = new ArrayList<>(spec.inputFiles());
 				expected.add(spec.jobFilename());
 
@@ -203,6 +237,8 @@ public class ClientHandler implements ConnectionHandler {
 
 				// call the delegator/scheduler in help
 				scheduler.scheduleReadyJobs();
+
+				userContext.send(new JobQueued(filesReceived.jobId()));  // let the user know
 //			} else if (received instanceof CheckJobResultCommand jobResult) {
 //				// check the job result if status done
 //			} else if (received instanceof CheckJobStatusCommand checkJobStatusCommand) {
@@ -231,19 +267,18 @@ public class ClientHandler implements ConnectionHandler {
 		// close open files - (mandatory to close open files before deleting them on windows)
 		fileReceiver.abandon();
 
-		// this is more of a decoration move; on this way job log is appended with proper state and reason;
-		// otherwise, this job is not so handy so just deleting it prior to setting it false is also fine...
+		// moving job status to failed so user can query it.
 		jobRegistry.failed(jobId, reason);
 
 		// delete job dir and everything inside
 		Path jobDir = baseDirPath.resolve("job_" + jobId.value());
 		DirCreator.recursivelyDeleteDirOnPath(jobDir);
 
-		// remove job
-		jobRegistry.remove(jobId);
-
 		// null-ing current job;
 		currentJobId = null;
+
+		// null-ing the job specification
+		jobSpec = null;
 
 		// constraint broken - declare job rejected
 		userContext.send(

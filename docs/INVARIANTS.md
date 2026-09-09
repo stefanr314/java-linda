@@ -14,6 +14,7 @@ on every exit path:
 - `send` to the workstation throws `IOException` (the station is gone)
 - the user aborts a job in `SCHEDULED` or `RUNNING`
 - the heartbeat sweep evicts a station that had jobs on it
+- whilest file chunking exceptions occur
 
 **On the workstation, the counter is decremented in `finally`.** If it is not, an `IOException`
 while launching the process permanently eats one unit of capacity.
@@ -30,7 +31,8 @@ abort may still report completion; that must be *ignored*, not thrown on — an 
 over something the caller could not have prevented.
 
 **`requeued` does NOT close the tuple space.** A rescheduled job continues in the space it already populated. `failed`
-and `aborted` do close it. This distinction is easy to lose and changes behaviour.
+and `aborted` do close it. This distinction is easy to lose and changes behaviour (this might change take it will
+caution).
 
 ---
 
@@ -39,7 +41,8 @@ and `aborted` do close it. This distinction is easy to lose and changes behaviou
 **Never hold a lock across I/O.** `send` can block on a full TCP buffer; under a lock that stalls all scheduling. Take a
 short lock for the state change, do I/O outside it, compensate on failure.
 
-**The workstation's control thread must never do slow work.** Receive a dispatch, hand it to the worker pool, return to
+**The workstation's control thread must never do slow work.** Receive a dispatch, await the receipt of input files, hand
+it to the worker pool, return to
 `readObject()`. Launching a process on that thread means no answer to the next `Ping`, and the server declares a healthy
 station dead.
 
@@ -68,7 +71,9 @@ connection.
 in the handler's `finally`. Two paths eventually disagree.
 
 **Unregister by context, not by name.** `remove(key, value)` so that a handler shutting down late cannot evict a
-replacement registered under the same name in the meantime. A `false` result is an ordinary outcome.
+replacement registered under the same name in the meantime. A `false` result is an ordinary outcome (this is more a
+feature that will meet the real power in future, since now there is no way for a ws to reconnect back so this path will
+never be reached).
 
 ---
 
@@ -89,7 +94,8 @@ the timeout, not from an exception on send.
 `SIGTERM` and Ctrl+C; it does not cover `SIGKILL`. That is why `EvalBootstrap` watches the parent through
 `ProcessHandle.of(parentPid).onExit()` and calls `halt`.
 
-**Drain `stdout` and `stderr` on separate threads.** The pipe fills at roughly 64 KB and the child blocks.
+**Drain `stdout` and `stderr` on separate threads.** The pipe fills at roughly 64 KB and the child blocks (already
+completed).
 
 ---
 
@@ -113,12 +119,13 @@ the timeout, not from an exception on send.
 ## Requirements from the assignment that are easy to lose
 
 - Server log records: arrival time, job number, machine name, completion time, current status.
-- Statuses exactly: `Ready`, `Scheduled`, `Running`, `Done`, `Failed`, `Aborted`.
+- Statuses exactly: `Receiving`, `Ready`, `Scheduled`, `Running`, `Done`, `Failed`, `Aborted`.
 - On registration a workstation reports its OS, Java version and parallel job capacity.
-- At most six input and six output files.
+- At most six input and six output files (job filename + 5 input helper libs = six inputs).
 - The workstation must run without a GUI (`--headless`).
-- All three programs need a GUI (Swing or JavaFX).
-- The client may disconnect and return later for status and results.
+- All three programs need a GUI (Swing).
+- The client may disconnect and return later for status and results (so the persistence is required just a simple txt
+  file that describes the job with job id, status, and additional message).
 - The server accepts several jobs in parallel.
 - Networking through `java.net` only — no RMI.
 - When a station fails: notify the user, who chooses between aborting and rescheduling; abort the whole job if the user

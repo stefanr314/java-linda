@@ -129,8 +129,8 @@ public final class ServerMain implements AutoCloseable {
 					// handle the failure response since entry message is not recognized
 					messageSink.send(
 							new Failure(
-							"Entry protocol message incorrect. Please provide proper hello " +
-							"message type. Type received " + received.getClass().getSimpleName()
+									"Entry protocol message incorrect. Please provide proper hello " +
+											"message type. Type received " + received.getClass().getSimpleName()
 							)
 					);
 

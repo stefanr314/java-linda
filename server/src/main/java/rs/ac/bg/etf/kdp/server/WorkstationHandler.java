@@ -149,10 +149,11 @@ public class WorkstationHandler implements ConnectionHandler {
 						context.send(new InputFilesStart(jobId));
 
 						if (new FileChunkSender(context::send).sendFiles(
-								jobId,
-								filenames,
-								jobInputDir,
-								() -> job.isFileTransmissionStopped() || Thread.currentThread().isInterrupted())
+										jobId,
+										filenames,
+										jobInputDir,
+										() -> job.isFileTransmissionStopped() || Thread.currentThread().isInterrupted())
+								.allPresentFilesSent()
 						) {
 
 							context.send(new InputFilesEnd(jobId));
@@ -278,7 +279,7 @@ public class WorkstationHandler implements ConnectionHandler {
 					return returnMessage.toString();
 				});
 
-				// todo something with output files ???
+				// todo something with output files - these are the actually delivered files
 
 				if (jobRegistry.finished(filesEnd.jobId())) {
 					context.releaseSlot(); // prevent the release being called twice - internal mechanism would

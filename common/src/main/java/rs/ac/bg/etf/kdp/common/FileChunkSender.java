@@ -15,7 +15,7 @@ import java.util.function.BooleanSupplier;
 
 public final class FileChunkSender {
 
-	private static final int CHUNK_SIZE = 32 * 1024;
+	private static final int CHUNK_SIZE = 32 * 1024;  // note: beware of maxarray=100_000 on ObjectInputFilter
 
 	/*
 	 Sink for sending the objects down the stream - OBJECT ONLY SINK; MUST BE THREAD SAFE
@@ -58,6 +58,12 @@ public final class FileChunkSender {
 		return true;
 	}
 
+
+	/*
+	This method is not cost-free. It entails whole process of Java serialization that has to be done prior to writing
+	 to the socket underlying buffer. So the price of sending some bytes of file using this way is more costly than
+	 sending the raw bytes down the channel.
+	 */
 	private boolean send(JobId jobId, Path filenamePath, String filename, BooleanSupplier stop) throws IOException {
 		if (Files.exists(filenamePath)) {
 			try (InputStream fileIS = Files.newInputStream(filenamePath)) {
@@ -68,7 +74,7 @@ public final class FileChunkSender {
 				while ((bytesRead = fileIS.read(buffer)) != -1) {
 					if (stop.getAsBoolean()) return false;
 
-					byte[] data = Arrays.copyOf(buffer, bytesRead);
+					byte[] data = Arrays.copyOf(buffer, bytesRead);  // new array always allocated
 					sink.send(new FileChunk(jobId, filename, sequence++, data, false));
 				}
 

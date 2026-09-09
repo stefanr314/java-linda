@@ -55,6 +55,11 @@ public abstract class FileChunkReceiver {
 	 * <p>It's mandatory to catch IO exception and call the {@link FileChunkReceiver#abandon()} in catch routine in
 	 * order to close all the open files.</p>
 	 *
+	 * <p>
+	 * This method is not cost-free since it entails Java deserialization prior to writing the bytes to local file.
+	 * This approach can be resolved as antipattern.
+	 * </p>
+	 *
 	 * @param chunk       an object representing the actual file chunk data being sent with metainformation.
 	 * @param writeToPath path to dir in which the files will be saved.
 	 * @return optional value wrapper - upon receiving sentinel value the path to stored file on disk; otherwise null.

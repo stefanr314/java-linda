@@ -46,6 +46,9 @@ public final class WorkstationMain implements AutoCloseable {
 
 	private final FileChunkReceiver fileReceiver = new ClientInputFilesReceiver();
 
+	private final String serverHostname;
+	private final int serverPort;
+
 	private final String os;
 	private final String hostname;
 	private final String javaVersion;
@@ -65,6 +68,9 @@ public final class WorkstationMain implements AutoCloseable {
 		);
 
 		this.reporter = new ReporterMessageSink(sink);
+
+		this.serverHostname = serverHostname;
+		this.serverPort = serverPort;
 
 		this.jobExecutor = new JobExecutor(parallelismCapacity, reporter, workers);
 
@@ -207,12 +213,11 @@ public final class WorkstationMain implements AutoCloseable {
 			} else if (received instanceof InputFilesStart inputFilesStart) {
 				// initial introductory message for start of receipt of input files (INPUT FLOW)
 
-				Path inputPath = BASE_PATH
-						.resolve("job_" + inputFilesStart.jobId().value())
-						.resolve("input");
+				Path jobDir = BASE_PATH
+						.resolve("job_" + inputFilesStart.jobId().value());
 
 				try {
-					DirCreator.createDir(inputPath);
+					DirCreator.createDir(jobDir);
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Internal disk exception. Dir creation failed", diskException);
 
@@ -223,10 +228,10 @@ public final class WorkstationMain implements AutoCloseable {
 			} else if (received instanceof FileChunk chunk) {
 				// path for receiving input files in chunks (INPUT FLOW)
 
-				Path inputPath = BASE_PATH.resolve("job_" + chunk.jobId().value()).resolve("input");
+				Path jobDir = BASE_PATH.resolve("job_" + chunk.jobId().value());
 
 				try {
-					fileReceiver.acceptChunkAndWrite(chunk, inputPath).ifPresent(
+					fileReceiver.acceptChunkAndWrite(chunk, jobDir).ifPresent(
 							filepath -> LOGGER.info(
 									"File received and saved on: " + filepath
 							)
@@ -266,7 +271,7 @@ public final class WorkstationMain implements AutoCloseable {
 
 				Path jobDir = BASE_PATH.resolve("job_" + filesEnd.jobId().value());
 
-				jobExecutor.execute(filesEnd.jobId(), jobDir);
+				jobExecutor.execute(filesEnd.jobId(), jobDir, serverHostname, serverPort);
 
 			} else if (received instanceof JobFilesFailure filesFailure) {
 
@@ -280,6 +285,11 @@ public final class WorkstationMain implements AutoCloseable {
 						+ abortResultTransfer.jobId().value());
 
 				jobExecutor.stopResultTransfer(abortResultTransfer.jobId());
+
+			} else if (received instanceof ResultsReceived resultsReceived) {
+				// server has received the results it's safe to delete the job dir
+				Path jobDir = BASE_PATH.resolve("job_" + resultsReceived.jobId().value());
+				DirCreator.recursivelyDeleteDirOnPath(jobDir);
 
 			} else if (received instanceof JobNotPresent jobNotPresent) {
 				// job was not found on server (INPUT FLOW)

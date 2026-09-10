@@ -275,7 +275,7 @@ public final class WorkstationMain implements AutoCloseable {
 
 			} else if (received instanceof JobFilesFailure filesFailure) {
 
-				// server suffered internal error - delete input dir
+				// server suffered internal error - delete job dir
 				reactToFileReceiptFailure(filesFailure.jobId(), () -> {
 				});
 			} else if (received instanceof AbortResultTransfer abortResultTransfer) {
@@ -287,7 +287,9 @@ public final class WorkstationMain implements AutoCloseable {
 				jobExecutor.stopResultTransfer(abortResultTransfer.jobId());
 
 			} else if (received instanceof ResultsReceived resultsReceived) {
-				// server has received the results it's safe to delete the job dir
+
+				// server has received the results it's safe to delete the job dir - results in context of terminal
+				// state of job (done, failed, aborted)
 				Path jobDir = BASE_PATH.resolve("job_" + resultsReceived.jobId().value());
 				DirCreator.recursivelyDeleteDirOnPath(jobDir);
 
@@ -339,9 +341,9 @@ public final class WorkstationMain implements AutoCloseable {
 	private void reactToFileReceiptFailure(JobId jobId, Runnable reaction) throws IOException {
 		fileReceiver.abandon();
 
-		Path inputPath = BASE_PATH.resolve("job_" + jobId.value()).resolve("input");
+		Path jobDir = BASE_PATH.resolve("job_" + jobId.value());
 
-		DirCreator.recursivelyDeleteDirOnPath(inputPath);
+		DirCreator.recursivelyDeleteDirOnPath(jobDir);
 
 		jobExecutor.jobReleaser(jobId);
 		reaction.run();

@@ -296,6 +296,8 @@ public class WorkstationHandler implements ConnectionHandler {
 								.formatted(failed.jobId().value(), failed.reason())
 				);
 
+				context.send(new ResultsReceived(failed.jobId()));
+
 				if (jobRegistry.failed(failed.jobId(), failed.reason())) {
 
 					context.releaseSlot();

@@ -1,9 +1,10 @@
 package rs.ac.bg.etf.kdp.workstation;
 
-import rs.ac.bg.etf.kdp.common.DirCreator;
 import rs.ac.bg.etf.kdp.common.FileChunkSender;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
+import rs.ac.bg.etf.kdp.common.exceptions.JarMisconfiguredException;
+import rs.ac.bg.etf.kdp.common.exceptions.JobCommandMismatch;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -91,13 +92,13 @@ public final class JobExecutor {
 	 * @param jobId      id of job to be executed.
 	 * @param jobDirPath path of job dir - on this path the process will start the job.
 	 */
-	public void execute(JobId jobId, Path jobDirPath) {
+	public void execute(JobId jobId, Path jobDirPath, String serverHostname, int serverPort) {
 		Objects.requireNonNull(jobId);
 		Objects.requireNonNull(jobDirPath);
 
 		JobSpec jobSpec = jobSpecification.get(jobId);
 		// run the job
-		workers.submit(() -> supervise(jobId, jobSpec, jobDirPath));
+		workers.submit(() -> supervise(jobId, jobSpec, jobDirPath, serverHostname, serverPort));
 	}
 
 	/**
@@ -161,11 +162,12 @@ public final class JobExecutor {
 	 * @param jobSpec    specification of job to supervise.
 	 * @param jobDirPath path to job directory.
 	 */
-	private void supervise(JobId jobId, JobSpec jobSpec, Path jobDirPath) {
+	private void supervise(JobId jobId, JobSpec jobSpec, Path jobDirPath,
+						   String serverHostname, int serverPort) {
 		RunningJob runningJob;
 		try {
 			// delegate the creation of job
-			runningJob = start(jobSpec, jobDirPath);
+			runningJob = start(jobId, jobSpec, jobDirPath, serverHostname, serverPort);
 
 			Process process = runningJob.process();
 
@@ -179,15 +181,21 @@ public final class JobExecutor {
 			runningJob.stderr().join(2000);
 			runningJob.stdout().join(2000);
 
-			if (exitCode == 0) deliverResults(jobId, jobSpec, jobDirPath);
+			if (exitCode == 0) deliverResults(jobId, jobSpec.outputFiles(), jobDirPath);
 			else reporter.failed(jobId, "exit code " + exitCode);
 		} catch (IOException failedToStart) {
 			reporter.failed(jobId, failedToStart.getMessage());
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			reporter.failed(jobId, "Interrupted");
+		} catch (JarMisconfiguredException manifestMissing) {
+			LOGGER.log(Level.FINE, "Manifest missing for job: " + jobId.value());
+			reporter.failed(jobId, "Internal error: " + manifestMissing.getMessage());
+		} catch (JobCommandMismatch commandMismatch) {
+			LOGGER.log(Level.FINE, "Manifest missing for job: " + jobId.value());
+			reporter.failed(jobId, commandMismatch.getMessage());
 		} catch (RuntimeException unexpected) {
-			LOGGER.log(Level.SEVERE, "Unexpected failure supervising " + jobId, unexpected);
+			LOGGER.log(Level.WARNING, "Unexpected failure supervising " + jobId, unexpected);
 			reporter.failed(jobId, "Internal error: " + unexpected);
 		} finally {
 			runningJobs.remove(jobId);
@@ -199,10 +207,10 @@ public final class JobExecutor {
 		}
 	}
 
-	private void deliverResults(JobId jobId, JobSpec spec, Path workDir) {
+	private void deliverResults(JobId jobId, List<String> resultFilenames, Path workDir) {
 		reporter.finished(jobId);
 
-		List<String> produced = new ArrayList<>(spec.outputFiles());
+		List<String> produced = new ArrayList<>(resultFilenames);
 
 		produced.add("logs/stdout.log");
 		produced.add("logs/stderr.log");
@@ -213,33 +221,24 @@ public final class JobExecutor {
 			if (senderReport.allPresentFilesSent()) {
 				reporter.outputFilesEnd(jobId, senderReport.delivered());
 			} else {
-				LOGGER.log(Level.WARNING, "Server aborted the result transfer for {0}", jobId);
-				// fixme here the results are still present on the station side so server can demand them again;
-				//  think about this
+				LOGGER.log(Level.INFO, "Server aborted the result transfer for {0}", jobId);
 			}
 		} catch (IOException e) {
 			LOGGER.log(Level.WARNING, "Result transfer for " + jobId + " failed", e);
 		}
 	}
 
-	private RunningJob start(JobSpec jobSpec, Path jobDirPath) throws IOException {
+	private RunningJob start(JobId jobId, JobSpec jobSpec, Path jobDirPath,
+							 String serverHostname, int serverPort) throws IOException {
 
-		// create logs dir
-		Path logs = jobDirPath.resolve("logs");
-		DirCreator.createDir(logs);
-
-		// create path to files - files do not exist on disk yet
-		Path stdoutFile = logs.resolve("stdout.log");
-		Path stderrFile = logs.resolve("stderr.log");
-
-		// prepare the command and arguments TODO
-		String[] commandAndArgs = jobSpec.command().split(" ");
+		// prepare job - may throw if job not properly constructed by client
+		JobPreparator.Prepared prepared = JobPreparator.prepareJob(jobId, jobSpec, jobDirPath, serverHostname,
+				serverPort);
 
 		// create the process with process builder - and run in separated directory (job specific directory)
-		// fixme there is no way for process to know about output dir path nor about the input dir (this one is just
-		//  for startup so it's fine to handle it straight away) and since output files are just filenames they will
-		//  be written to the job dir path
-		ProcessBuilder processBuilder = new ProcessBuilder(commandAndArgs).directory(jobDirPath.toFile());
+		ProcessBuilder processBuilder =
+				new ProcessBuilder(prepared.commands())
+						.directory(jobDirPath.toFile());
 		Process job = processBuilder.start();
 
 		// in order to prevent deadlock if processes are too verbose (to output and err channels) it's required to
@@ -248,7 +247,7 @@ public final class JobExecutor {
 		// it's his responsibility)
 		Thread stdout = new Thread(() -> {
 			try (InputStream processOut = job.getInputStream();
-				 OutputStream fileOutput = Files.newOutputStream(stdoutFile)) {
+				 OutputStream fileOutput = Files.newOutputStream(prepared.stdoutFile())) {
 				byte[] buffer = new byte[16 * 1024];
 				int bytesRead;
 
@@ -261,7 +260,7 @@ public final class JobExecutor {
 
 		Thread stderr = new Thread(() -> {
 			try (InputStream processErr = job.getErrorStream();
-				 OutputStream fileError = Files.newOutputStream(stderrFile)) {
+				 OutputStream fileError = Files.newOutputStream(prepared.stderrFile())) {
 				byte[] buffer = new byte[16 * 1024];
 				int bytesRead;
 

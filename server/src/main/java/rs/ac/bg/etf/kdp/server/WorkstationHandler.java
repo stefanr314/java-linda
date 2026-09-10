@@ -279,7 +279,10 @@ public class WorkstationHandler implements ConnectionHandler {
 					return returnMessage.toString();
 				});
 
-				// todo something with output files - these are the actually delivered files
+				// note: all files sent by station will be received - TCP guarantees
+
+				// send the ack signal to station
+				context.send(new ResultsReceived(filesEnd.jobId()));
 
 				if (jobRegistry.finished(filesEnd.jobId())) {
 					context.releaseSlot(); // prevent the release being called twice - internal mechanism would

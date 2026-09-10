@@ -33,6 +33,10 @@ public final class FileChunkSender {
 	 * <p>Who may transfer the transmission differs per direction: a job being rejected mid-flight, a client
 	 * disconnecting, workstation dying. This sender just checks the flag</p>
 	 *
+	 * <p>Sending just present files since this method will be used to send output results which at the time the
+	 * process exited may not be present locally. Upon client sending his input files, a prior check on file
+	 * existence is done before calling this sender.</p>
+	 *
 	 * @param jobId            id of job which files are being sent.
 	 * @param filenames        list of filenames to send.
 	 * @param sourceDir        source path of filenames.

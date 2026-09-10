@@ -204,13 +204,14 @@ public final class JobExecutor {
 
 		List<String> produced = new ArrayList<>(spec.outputFiles());
 
-		produced.add("output/logs/stdout.log");
-		produced.add("output/logs/stderr.log");
+		produced.add("logs/stdout.log");
+		produced.add("logs/stderr.log");
 
 		try {
-			if (new FileChunkSender(reporter::sendChunk)
-					.sendFiles(jobId, produced, workDir, () -> transferStopped(jobId))) {
-				reporter.outputFilesEnd(jobId, produced);
+			FileChunkSender.SenderReport senderReport = new FileChunkSender(reporter::sendChunk)
+					.sendFiles(jobId, produced, workDir, () -> transferStopped(jobId));
+			if (senderReport.allPresentFilesSent()) {
+				reporter.outputFilesEnd(jobId, senderReport.delivered());
 			} else {
 				LOGGER.log(Level.WARNING, "Server aborted the result transfer for {0}", jobId);
 				// fixme here the results are still present on the station side so server can demand them again;
@@ -222,11 +223,9 @@ public final class JobExecutor {
 	}
 
 	private RunningJob start(JobSpec jobSpec, Path jobDirPath) throws IOException {
-		// create output dir
-		Path outputDirPath = jobDirPath.resolve("output");
 
 		// create logs dir
-		Path logs = outputDirPath.resolve("logs");
+		Path logs = jobDirPath.resolve("logs");
 		DirCreator.createDir(logs);
 
 		// create path to files - files do not exist on disk yet
@@ -276,9 +275,9 @@ public final class JobExecutor {
 		stdout.start();
 		stderr.start();
 
-		return new RunningJob(job, outputDirPath, stdout, stderr);
+		return new RunningJob(job, stdout, stderr);
 	}
 
-	private record RunningJob(Process process, Path resultDir, Thread stdout, Thread stderr) {
+	private record RunningJob(Process process, Thread stdout, Thread stderr) {
 	}
 }

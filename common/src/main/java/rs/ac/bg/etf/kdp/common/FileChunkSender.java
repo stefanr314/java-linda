@@ -5,7 +5,6 @@ import rs.ac.bg.etf.kdp.common.protocol.FileChunk;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -38,24 +37,29 @@ public final class FileChunkSender {
 	 * @param filenames        list of filenames to send.
 	 * @param sourceDir        source path of filenames.
 	 * @param stopTransmission stop flag.
-	 * @return {@code true} if all files have been sent; {@code false} otherwise.
+	 * @return {@link SenderReport} containing the flag to check whether all present files have been sent and list of
+	 * present files.
 	 * @throws IOException whilst working with files
 	 */
-	public boolean sendFiles(JobId jobId, List<String> filenames, Path sourceDir,
-							 BooleanSupplier stopTransmission) throws IOException {
+	public SenderReport sendFiles(JobId jobId, List<String> filenames, Path sourceDir,
+								  BooleanSupplier stopTransmission) throws IOException {
 		Objects.requireNonNull(jobId);
 		Objects.requireNonNull(filenames);
 		Objects.requireNonNull(sourceDir);
 		Objects.requireNonNull(stopTransmission);
 
-		List<String> sendFilenames = List.copyOf(filenames);
+		List<String> presentFiles = List.copyOf(filenames)
+				.stream()
+				.filter(filename -> Files.exists(sourceDir.resolve(filename)))
+				.toList();
 
-		for (String sendFilename : sendFilenames) {
+		for (String sendFilename : presentFiles) {
 			if (!send(jobId, sourceDir.resolve(sendFilename), sendFilename, stopTransmission)) {
-				return false;
+
+				return new SenderReport(false, List.copyOf(presentFiles));
 			}
 		}
-		return true;
+		return new SenderReport(true, List.copyOf(presentFiles));
 	}
 
 
@@ -65,23 +69,20 @@ public final class FileChunkSender {
 	 sending the raw bytes down the channel.
 	 */
 	private boolean send(JobId jobId, Path filenamePath, String filename, BooleanSupplier stop) throws IOException {
-		if (Files.exists(filenamePath)) {
-			try (InputStream fileIS = Files.newInputStream(filenamePath)) {
-				byte[] buffer = new byte[CHUNK_SIZE];
-				int sequence = 0;
-				int bytesRead;
 
-				while ((bytesRead = fileIS.read(buffer)) != -1) {
-					if (stop.getAsBoolean()) return false;
+		try (InputStream fileIS = Files.newInputStream(filenamePath)) {
+			byte[] buffer = new byte[CHUNK_SIZE];
+			int sequence = 0;
+			int bytesRead;
 
-					byte[] data = Arrays.copyOf(buffer, bytesRead);  // new array always allocated
-					sink.send(new FileChunk(jobId, filename, sequence++, data, false));
-				}
+			while ((bytesRead = fileIS.read(buffer)) != -1) {
+				if (stop.getAsBoolean()) return false;
 
-				sink.send(new FileChunk(jobId, filename, sequence, new byte[0], true));
+				byte[] data = Arrays.copyOf(buffer, bytesRead);  // new array always allocated
+				sink.send(new FileChunk(jobId, filename, sequence++, data, false));
 			}
-		} else {
-			throw new NoSuchFileException(filename);
+
+			sink.send(new FileChunk(jobId, filename, sequence, new byte[0], true));
 		}
 
 		return true;
@@ -93,5 +94,8 @@ public final class FileChunkSender {
 	@FunctionalInterface
 	public interface FileChunkSink {
 		void send(FileChunk chunk) throws IOException;
+	}
+
+	public record SenderReport(boolean allPresentFilesSent, List<String> delivered) {
 	}
 }

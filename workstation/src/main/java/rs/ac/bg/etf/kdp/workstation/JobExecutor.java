@@ -182,7 +182,7 @@ public final class JobExecutor {
 			runningJob.stdout().join(2000);
 
 			if (exitCode == 0) deliverResults(jobId, jobSpec.outputFiles(), jobDirPath);
-			else reporter.failed(jobId, "exit code " + exitCode);
+			else reporter.failed(jobId, "exit code " + exitCode);  // note: add the stderr to message
 		} catch (IOException failedToStart) {
 			reporter.failed(jobId, failedToStart.getMessage());
 		} catch (InterruptedException e) {

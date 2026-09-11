@@ -1,14 +1,12 @@
 package rs.ac.bg.etf.kdp.workstation;
 
-import rs.ac.bg.etf.kdp.common.DirCreator;
-import rs.ac.bg.etf.kdp.common.JarUtil;
-import rs.ac.bg.etf.kdp.common.JobId;
-import rs.ac.bg.etf.kdp.common.JobSpec;
+import rs.ac.bg.etf.kdp.common.*;
 import rs.ac.bg.etf.kdp.common.exceptions.JobCommandMismatch;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Objects;
 
 /**
  * Class that knows how to prepare a job to be run on JVM. Record only jobs.
@@ -18,6 +16,10 @@ public class JobPreparator {
 	public static Prepared prepareJob(JobId jobId, JobSpec jobSpec,
 									  Path jobDirPath, String serverHostname,
 									  int serverPort) throws IOException {
+		Objects.requireNonNull(jobId);
+		Objects.requireNonNull(jobSpec);
+		Objects.requireNonNull(jobDirPath);
+
 		// create logs dir
 		Path logs = jobDirPath.resolve("logs");
 		DirCreator.createDir(logs);
@@ -31,34 +33,54 @@ public class JobPreparator {
 
 		String mainClassBinaryName = JarUtil.getMainClassBinaryName(jobJarPath.toFile());
 
-		String classpath = getClasspath(jobSpec, jobJarPath);
+		ClasspathWithArgs classpathWithArgs = getClasspathWithArgs(jobSpec, jobJarPath);
 
-		String[] commands = {"java",
+		String classpath = classpathWithArgs.classpath();
+		String[] args = classpathWithArgs.args;
+
+		String[] baseCommand = {"java",
 				"-cp", classpath,
-				mainClassBinaryName,
 				"-Dlinda.host=" + serverHostname,
 				"-Dlinda.port=" + serverPort,
-				"-Dlinda.job=" + jobId.value()};
+				"-Dlinda.job=" + jobId.value(),
+				mainClassBinaryName};
 
-		return new Prepared(stdoutFile, stderrFile, commands);
+		if (args == null || args.length == 0) {
+			return new Prepared(stdoutFile, stderrFile, baseCommand);
+		}
+
+		String[] command = new String[baseCommand.length + args.length];
+
+		System.arraycopy(baseCommand, 0, command, 0, baseCommand.length);
+		System.arraycopy(args, 0, command, baseCommand.length, args.length);
+
+		return new Prepared(stdoutFile, stderrFile, command);
 	}
 
-	private static String getClasspath(JobSpec jobSpec, Path jobJarPath) {
-		Path lindaClientPath = Path.of(
-				"linda-client",
-				"target",
-				"linda-client-1.0-SNAPSHOT.jar");
+	private static ClasspathWithArgs getClasspathWithArgs(JobSpec jobSpec, Path jobJarPath) throws IOException {
+		Path lindaClientPath = PathUtil.getLindaClientPath();
 
-		// prepare the command and arguments TODO
-		String[] commandSplit = jobSpec.command().split(" ");
-		if (!commandSplit[0].contains("java") || !commandSplit[1].contains("-jar")) {
+		String[] commandSplit = jobSpec.command().trim().split("\\s+", 4);
+		if (commandSplit.length < 3 ||
+				!commandSplit[0].contains("java") ||
+				!commandSplit[1].contains("-jar") ||
+				!commandSplit[2].equals(jobSpec.jobFilename())
+		) {
 			throw new JobCommandMismatch(jobSpec.command());
 		}
 
+		String[] args = null;
+		if (commandSplit.length == 4) {
+			args = commandSplit[3].split(" ");
+		}
 		String classpath = jobJarPath.toAbsolutePath() + File.pathSeparator + lindaClientPath.toAbsolutePath();
 
-		return classpath;
+		return new ClasspathWithArgs(classpath, args);
 	}
+
+	private record ClasspathWithArgs(String classpath, String[] args) {
+	}
+
 
 	public record Prepared(Path stdoutFile, Path stderrFile, String[] commands) {
 	}

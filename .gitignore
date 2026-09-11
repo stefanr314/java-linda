@@ -30,5 +30,5 @@ dependency-reduced-pom.xml
 NOTES.md
 
 # internal txt files
-client/*.txt
-client/*.job
+*/*.txt
+*/*.log

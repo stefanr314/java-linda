@@ -44,6 +44,9 @@ public record JobSpec(String jobFilename, String command, List<String> inputFile
 		if (java.util.Set.copyOf(inputFiles).size() != inputFiles.size()) {
 			throw new IllegalArgumentException("Duplicate input file names");
 		}
+		if (!java.util.Collections.disjoint(inputFiles, outputFiles)) {
+			throw new IllegalArgumentException("inputFiles and outputFiles must not share a name");
+		}
 	}
 
 	/**

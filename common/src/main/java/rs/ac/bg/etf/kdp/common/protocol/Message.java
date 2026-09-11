@@ -13,5 +13,5 @@ import java.io.Serializable;
  * and a {@code String[]} payload cross the wire.
  */
 public sealed interface Message extends Serializable
-		permits AbortResultTransfer, Ack, BoolReply, Bye, Eval, Failure, FileChunk, Hello, In, Inp, InputFilesEnd, InputFilesStart, JobAccepted, JobDispatch, JobFailed, JobFilesFailure, JobFinished, JobJarEnd, JobJarStart, JobNotPresent, JobQueued, JobRegistered, JobRejected, JobRunning, JobSubmitCommand, Out, OutputFilesEnd, Ping, Pong, Rd, Rdp, ReadyToAcceptInputFiles, Registered, Reply, ResultsReceived, TupleReply {
+		permits AbortResultTransfer, Ack, BoolReply, Bye, Eval, Failure, FileChunk, Hello, In, Inp, InputFilesEnd, InputFilesStart, JobAborted, JobAccepted, JobDispatch, JobFailed, JobFilesFailure, JobFinished, JobJarEnd, JobJarStart, JobNotPresent, JobNotTerminated, JobQueued, JobRegistered, JobRejected, JobResultQuery, JobRunning, JobStatusQuery, JobStatusResponse, JobSubmitCommand, Out, OutputFilesEnd, OutputFilesStart, Ping, Pong, Rd, Rdp, ReadyToAcceptInputFiles, Registered, Reply, ResultsReceived, TupleReply {
 }

@@ -229,7 +229,8 @@ public class ClientHandler implements ConnectionHandler {
 
 				LOGGER.fine("All input file bytes have been received for job:" + filesReceived.jobId().value());
 
-				// not mandatory but explicit null-ing rather
+				// required so the current job never stays - if sending results fails if this is not null-ed it will
+				// delete result dir (e.g. when clients disconnects in middle of result files transfer)
 				currentJobId = null;
 
 				// transit state to READY
@@ -239,19 +240,65 @@ public class ClientHandler implements ConnectionHandler {
 				scheduler.scheduleReadyJobs();
 
 				userContext.send(new JobQueued(filesReceived.jobId()));  // let the user know
-//			} else if (received instanceof CheckJobResultCommand jobResult) {
-//				// check the job result if status done
-//			} else if (received instanceof CheckJobStatusCommand checkJobStatusCommand) {
-//				// check job status
+			} else if (received instanceof JobResultQuery queryJobResult) {
+				// check the job result if status done
+				Optional<JobContext> optJobContext = jobRegistry.find(queryJobResult.jobId());
+				if (optJobContext.isEmpty()) {
+					userContext.send(new JobNotPresent(queryJobResult.jobId()));
+					continue;
+				}
+				JobContext job = optJobContext.get();
+				if (!job.status().isTerminal()) {
+					userContext.send(new JobNotTerminated(queryJobResult.jobId(), job.status()));
+					continue;
+				}
+
+				// switch terminated state
+				switch (job.status()) {
+					case FAILED -> userContext.send(new JobFailed(queryJobResult.jobId(), job.failureReason().orElse(
+							"Unknown")));
+					case ABORTED -> userContext.send(new JobAborted(queryJobResult.jobId()));
+					case DONE -> {
+						// client is blocked waiting on exactly this, so send the output files on this same
+						// handler thread - there's nothing else this connection could be doing meanwhile.
+						JobSpec doneSpec = job.specification();
+						Path outputDir = baseDirPath
+								.resolve("job_" + queryJobResult.jobId().value())
+								.resolve("output");
+
+						userContext.send(new OutputFilesStart(queryJobResult.jobId()));
+
+						FileChunkSender.SenderReport report = new FileChunkSender(userContext::send)
+								.sendFiles(queryJobResult.jobId(), doneSpec.outputFiles(), outputDir, () -> false);
+
+						userContext.send(new OutputFilesEnd(queryJobResult.jobId(), report.delivered()));
+					}
+				}
+			} else if (received instanceof JobStatusQuery queryJobStatus) {
+				Optional<JobContext> optJobContext = jobRegistry.find(queryJobStatus.jobId());
+				if (optJobContext.isEmpty()) {
+					userContext.send(new JobNotPresent(queryJobStatus.jobId()));
+					continue;
+				}
+				JobContext job = optJobContext.get();
+				// check job status
+				userContext.send(new JobStatusResponse(queryJobStatus.jobId(), job.status()));
+			} else if (received instanceof ResultsReceived resultReceived) {
+				// client has picked up the job (results or a terminal failure/abort) - delete the job dir
+				// and drop it from the registry so a later query correctly reports it as unknown.
+				Path jobDir = baseDirPath.resolve("job_" + resultReceived.jobId().value());
+				DirCreator.recursivelyDeleteDirOnPath(jobDir);
+				jobRegistry.remove(resultReceived.jobId());
+
 //			} else if (received instanceof AbortJobCommand checkAbortJobCommand) {
 //				// abort the job
 //			} else if (received instanceof JobStoppedResponse jobStoppedResponse) {
 //				// respond to the job that was stopped by dead workstation
-
-				// client either aborted or delegated the job to next free station
-				// IF ABORTED CALL THE CLASS FOR ABORTION
-
-				// IF DELEGATED CALL SCHEDULER TO DELEGATE ONCE AGAIN (I hope so)
+//
+//				 client either aborted or delegated the job to next free station
+//				 IF ABORTED CALL THE CLASS FOR ABORTION
+//
+//				 IF DELEGATED CALL SCHEDULER TO DELEGATE ONCE AGAIN (I hope so)
 			} else if (received instanceof Bye ignored) {
 
 				// client closed the connection everything should keep running anyway

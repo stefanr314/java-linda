@@ -32,3 +32,6 @@ NOTES.md
 # internal txt files
 */*.txt
 */*.log
+
+# client results
+/client/results/

@@ -291,6 +291,7 @@ public final class WorkstationMain implements AutoCloseable {
 				// server has received the results it's safe to delete the job dir - results in context of terminal
 				// state of job (done, failed, aborted)
 				Path jobDir = BASE_PATH.resolve("job_" + resultsReceived.jobId().value());
+
 				DirCreator.recursivelyDeleteDirOnPath(jobDir);
 
 			} else if (received instanceof JobNotPresent jobNotPresent) {

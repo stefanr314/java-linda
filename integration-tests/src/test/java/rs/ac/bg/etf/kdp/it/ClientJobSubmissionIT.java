@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 import rs.ac.bg.etf.kdp.client.ClientMain;
 import rs.ac.bg.etf.kdp.client.JobClient;
 import rs.ac.bg.etf.kdp.client.JobHistory;
+import rs.ac.bg.etf.kdp.common.DirCreator;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.server.ServerMain;
 
@@ -40,6 +41,7 @@ public class ClientJobSubmissionIT {
 	@AfterEach
 	void stopServer() throws IOException {
 		server.close();
+		DirCreator.recursivelyDeleteDirOnPath(Path.of(System.getProperty("java.io.tmpdir"), "server_jobs"));
 	}
 
 	@Test

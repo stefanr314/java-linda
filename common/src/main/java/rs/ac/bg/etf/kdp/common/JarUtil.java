@@ -14,7 +14,13 @@ public final class JarUtil {
 			Manifest manifest = jarFile.getManifest();
 			if (manifest != null) {
 
-				return manifest.getMainAttributes().getValue("Main-Class");
+				String mainClass = manifest.getMainAttributes().getValue("Main-Class");
+				if (mainClass == null) {
+					throw new JarMisconfiguredException("JAR does not contain Main Class attribute in MANIFEST.MF");
+
+				}
+
+				return mainClass;
 			}
 			throw new JarMisconfiguredException("JAR does not contain Main Class attribute in MANIFEST.MF");
 		}

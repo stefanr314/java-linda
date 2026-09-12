@@ -132,6 +132,7 @@ public final class JobClient implements AutoCloseable {
 				throw new IOException("Handshake refused: " + failure.message());
 			}
 		} catch (IOException | ClassNotFoundException failure) {
+			LOGGER.info("Exception occurred on socket");
 			disconnect();
 			throw failure;
 		}
@@ -346,7 +347,8 @@ public final class JobClient implements AutoCloseable {
 			throw new IOException("Unexpected reply: " + response.getClass().getSimpleName());
 		}
 
-		DirCreator.createDir(targetDir);  // create the results dir
+		DirCreator.createDir(targetDir
+				.resolve("job_" + jobId.value()));  // create the results dir (logs dir will be created by rcvr)
 
 		// special receiver for clients
 		FileChunkReceiver receiver = new ClientResultsReceiver();
@@ -357,7 +359,8 @@ public final class JobClient implements AutoCloseable {
 			for (; ; ) {
 				Object message = read();
 				if (message instanceof FileChunk chunk) {
-					receiver.acceptChunkAndWrite(chunk, targetDir).ifPresent(written::add);
+					receiver.acceptChunkAndWrite(chunk, targetDir.resolve("job_" + jobId.value()))
+							.ifPresent(written::add);
 				} else if (message instanceof OutputFilesEnd end) {
 					delivered = end.deliveredFiles();
 					break;

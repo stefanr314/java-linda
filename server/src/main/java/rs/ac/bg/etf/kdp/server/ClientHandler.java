@@ -266,10 +266,14 @@ public class ClientHandler implements ConnectionHandler {
 								.resolve("job_" + queryJobResult.jobId().value())
 								.resolve("output");
 
+						ArrayList<String> results = new ArrayList<>(doneSpec.outputFiles());
+						results.add("logs/stdout.log");
+						results.add("logs/stderr.log");
+
 						userContext.send(new OutputFilesStart(queryJobResult.jobId()));
 
 						FileChunkSender.SenderReport report = new FileChunkSender(userContext::send)
-								.sendFiles(queryJobResult.jobId(), doneSpec.outputFiles(), outputDir, () -> false);
+								.sendFiles(queryJobResult.jobId(), results, outputDir, () -> false);
 
 						userContext.send(new OutputFilesEnd(queryJobResult.jobId(), report.delivered()));
 					}

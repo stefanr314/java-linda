@@ -92,8 +92,12 @@ public class ClientResultsFetchIT {
 			Path resultsDir = tempDir.resolve("results");
 			List<Path> written = client.fetchResults(jobId, resultsDir);
 
-			assertThat(written).containsExactly(resultsDir.resolve(OUTPUT_FILE_NAME));
-			assertThat(Files.readString(resultsDir.resolve(OUTPUT_FILE_NAME))).isEqualTo(OUTPUT_CONTENT);
+			assertThat(written).containsExactly(
+					resultsDir.resolve("job_" + jobId.value()).resolve(OUTPUT_FILE_NAME)
+			);
+			assertThat(
+					Files.readString(resultsDir.resolve("job_" + jobId.value()).resolve(OUTPUT_FILE_NAME))
+			).isEqualTo(OUTPUT_CONTENT);
 
 			assertThatThrownBy(() -> client.fetchResults(jobId, resultsDir))
 					.isInstanceOf(IOException.class)

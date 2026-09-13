@@ -3,7 +3,6 @@ package rs.ac.bg.etf.kdp.server;
 import rs.ac.bg.etf.kdp.common.HeartbeatPolicy;
 import rs.ac.bg.etf.kdp.common.protocol.Ping;
 
-import java.io.IOException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -26,12 +25,13 @@ public class HeartbeatDaemon implements AutoCloseable {
 	private final long intervalMillis;
 	private final long timeoutNanos;
 	private final WorkstationRegistry workstationRegistry;
-	private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-		Thread t = new Thread(r, "heartbeat checker");
+	private final ScheduledExecutorService scheduler = Executors
+			.newSingleThreadScheduledExecutor(r -> {
+				Thread t = new Thread(r, "heartbeat checker");
 
-		t.setDaemon(true);
-		return t;
-	});
+				t.setDaemon(true);
+				return t;
+			});
 	private final Runnable runner = this::sweeper;
 
 	public HeartbeatDaemon(HeartbeatPolicy policy, WorkstationRegistry workstationRegistry) {
@@ -82,14 +82,8 @@ public class HeartbeatDaemon implements AutoCloseable {
 			}
 
 			// send probes
-			try {
-				// FIXME - this can block and shutdown all the station due to SO_TIMEOUT on stations RCV bfr
-				workstation.send(new Ping(System.nanoTime()));
-			} catch (IOException e) {
-				LOGGER.log(Level.WARNING, "Unable to send message to the workstation: " + workstation.hostName() +
-						". Workstation will be disconnected.");
-				workstation.disconnect();
-			}
+			workstation.sendAsync(new Ping(System.nanoTime()));  // ASYNC SEND required since theoretically send
+			// might block and break HB mechanism totally
 		}
 	}
 

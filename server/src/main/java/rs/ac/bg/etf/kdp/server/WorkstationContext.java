@@ -1,15 +1,49 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.FileChunkSender;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
+import rs.ac.bg.etf.kdp.common.protocol.InputFilesEnd;
+import rs.ac.bg.etf.kdp.common.protocol.InputFilesStart;
+import rs.ac.bg.etf.kdp.common.protocol.JobFilesFailure;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.logging.Level;
 
 public final class WorkstationContext {
 	private final WorkstationInfo info;
 	private final CloseableMessageSink messageSink;
+
+	private final ExecutorService asyncWriter = Executors.newSingleThreadExecutor(
+			r -> {
+				Thread t = new Thread(r, "async-writer");
+
+				t.setDaemon(true);
+				return t;
+			}
+	);
+
+	/*
+	Separate threads for writing of file chunks to socket.
+	 */
+	private final ExecutorService chunkWriters = Executors.newFixedThreadPool(
+			2,
+			(runner) -> {
+				Thread thread = new Thread(
+						runner,
+						"file-chunk-writer-" + UUID.randomUUID().getLeastSignificantBits());
+
+				thread.setDaemon(true);
+
+				return thread;
+			}
+	);
 
 	private final AtomicInteger availableSlots;
 
@@ -41,8 +75,31 @@ public final class WorkstationContext {
 		messageSink.send(message);
 	}
 
+	/**
+	 * <em>Fire and forget</em>. Asynchronously send the message using the single thread executor. Used by heartbeat
+	 * mechanism since sending must not be blocking (even theoretically).
+	 *
+	 * @param message message to sent to object channel.
+	 */
+	public void sendAsync(Object message) {
+		asyncWriter.execute(() -> {
+			try {
+				send(message);
+			} catch (IOException stationDead) {
+				disconnect();  // broken socket -> gone station
+			}
+		});
+	}
+
+	public void sendFileChunks(Runnable chunkSender) {
+		chunkWriters.execute(chunkSender);
+	}
+
 	public void disconnect() {
 		messageSink.close();
+		chunkWriters.shutdownNow(); // station is dead so no use of writer thread - visible immediately to
+		// writers since interrupt flag is polled
+		asyncWriter.shutdownNow();
 	}
 
 	public boolean tryAcquireSlot() {
@@ -61,6 +118,10 @@ public final class WorkstationContext {
 		return this.availableSlots.get();
 	}
 
+	public boolean staleTimeoutElapsed(long timeoutNanos) {
+		return System.nanoTime() - this.reportedNanoTime.get() > timeoutNanos;
+	}
+
 	public WorkstationInfo workstationInfo() {
 		return info;  // direct reference fine since its record class
 	}
@@ -72,10 +133,6 @@ public final class WorkstationContext {
 	@Override
 	public String toString() {
 		return info.toString();
-	}
-
-	public boolean staleTimeoutElapsed(long timeoutNanos) {
-		return System.nanoTime() - this.reportedNanoTime.get() > timeoutNanos;
 	}
 
 	// NOTE: this method is package private so the heartbeat mechanism must live in the same package as the

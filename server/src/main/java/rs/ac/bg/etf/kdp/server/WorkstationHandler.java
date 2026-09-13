@@ -10,9 +10,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -41,22 +38,6 @@ public class WorkstationHandler implements ConnectionHandler {
 	private final FileChunkReceiver fileChunkReceiver;
 
 	private final Path baseDirPath;
-
-	/*
-	Separate thread for writing of file chunks to socket.
-	 */
-	private final ExecutorService chunkWriters = Executors.newFixedThreadPool(
-			2,
-			(runner) -> {
-				Thread thread = new Thread(
-						runner,
-						"file-chunk-writer-" + UUID.randomUUID().getLeastSignificantBits());
-
-				thread.setDaemon(true);
-
-				return thread;
-			}
-	);
 
 	public WorkstationHandler(CloseableMessageSink messageSink, ObjectInput in,
 							  WorkstationRegistrator registrator,
@@ -88,9 +69,6 @@ public class WorkstationHandler implements ConnectionHandler {
 			// from registrator; otherwise dead workstation can be picked as candidate for processing jobs
 
 			fileChunkReceiver.abandon(); // if station died upon sending the results just close open files
-
-			chunkWriters.shutdownNow();  // station is dead so no use of writer thread - visible immediately to
-			// writers since interrupt flag is polled
 
 			// delete all directories for jobs that were running when station died - if transfer started but station
 			// died mid-way it's required to delete these output dirs since they hold partial result values.
@@ -144,7 +122,7 @@ public class WorkstationHandler implements ConnectionHandler {
 						.resolve("job_" + jobId.value())
 						.resolve("input");
 
-				chunkWriters.submit(() -> {
+				context.sendFileChunks(() -> {
 					try {
 						context.send(new InputFilesStart(jobId));
 

@@ -307,6 +307,34 @@ public final class JobClient implements AutoCloseable {
 	}
 
 	/**
+	 * Aborts a job. Checks the current status first so nothing is sent to the server for a job that
+	 * has already reached a terminal state - there is nothing left to abort.
+	 *
+	 * @return a human-readable outcome, suitable for printing directly
+	 * @throws IOException if the job is unknown to the server or the reply is otherwise unexpected
+	 */
+	public String abortJob(JobId jobId) throws IOException, ClassNotFoundException {
+		ensureConnected();
+
+		JobStatus status = queryStatus(jobId);
+		if (status.isTerminal()) {
+			return "Job " + jobId.value() + " is already " + status + "; nothing to abort.";
+		}
+
+		send(new AbortJobCommand(jobId));
+		Object response = read();
+
+		if (response instanceof JobAborted) {
+			recordHistory(jobId.value(), jobFilenameFor(jobId), "ABORTED");
+			return "Job aborted: " + jobId.value();
+		} else if (response instanceof Failure failure) {
+			return "Could not abort job " + jobId.value() + ": " + failure.message();
+		} else {
+			throw new IOException("Unexpected reply: " + response.getClass().getSimpleName());
+		}
+	}
+
+	/**
 	 * Retrieves a finished job's results, following the same lock-step pattern as {@link #submit}:
 	 * {@link JobResultQuery} -&gt; {@link OutputFilesStart}, a {@link FileChunk} stream, then
 	 * {@link OutputFilesEnd}. Each file is written to {@code targetDir} as its chunks arrive - never

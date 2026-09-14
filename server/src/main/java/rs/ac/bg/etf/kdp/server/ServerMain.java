@@ -74,7 +74,8 @@ public final class ServerMain implements AutoCloseable {
 				scheduler, jobRegistry);
 		this.heartbeat = new HeartbeatDaemon(heartbeatPolicy, workstationRegistry);
 
-		this.connectionHandlerFactory = new ConnectionHandlerFactory(wsRegistrator, jobRegistry, scheduler);
+		this.connectionHandlerFactory = new ConnectionHandlerFactory(wsRegistrator, jobRegistry, scheduler,
+				workstationRegistry);
 	}
 
 	public static void main(String[] args) {

@@ -26,6 +26,7 @@ public class ClientHandler implements ConnectionHandler {
 	private final String clientConnected;
 	private final Scheduler scheduler;
 	private final FileChunkReceiver fileReceiver;
+	private final WorkstationRegistry workstationRegistry;
 
 	private final Path baseDirPath;
 
@@ -36,7 +37,8 @@ public class ClientHandler implements ConnectionHandler {
 						 ObjectInput in,
 						 JobRegistry jobRegistry,
 						 String clientConnected,
-						 Scheduler scheduler, Path baseDirPath) {
+						 Scheduler scheduler, Path baseDirPath,
+						 WorkstationRegistry workstationRegistry) {
 
 		this.messageSink = messageSink;
 		this.in = in;
@@ -45,6 +47,7 @@ public class ClientHandler implements ConnectionHandler {
 		this.clientConnected = clientConnected;
 		this.scheduler = scheduler;
 		this.baseDirPath = baseDirPath;
+		this.workstationRegistry = workstationRegistry;
 
 		this.fileReceiver = new ClientInputFilesReceiver();
 	}
@@ -289,15 +292,37 @@ public class ClientHandler implements ConnectionHandler {
 				DirCreator.recursivelyDeleteDirOnPath(jobDir);
 				jobRegistry.remove(resultReceived.jobId());
 
-//			} else if (received instanceof AbortJobCommand checkAbortJobCommand) {
-//				// abort the job
-//			} else if (received instanceof JobStoppedResponse jobStoppedResponse) {
-//				// respond to the job that was stopped by dead workstation
-//
-//				 client either aborted or delegated the job to next free station
-//				 IF ABORTED CALL THE CLASS FOR ABORTION
-//
-//				 IF DELEGATED CALL SCHEDULER TO DELEGATE ONCE AGAIN (I hope so)
+			} else if (received instanceof AbortJobCommand abortJobCommand) {
+				JobId jobId = abortJobCommand.jobId();
+
+				Optional<JobContext> optJobContext = jobRegistry.find(jobId);
+				if (optJobContext.isEmpty()) {
+					userContext.send(new JobNotPresent(jobId));
+					continue;
+				}
+
+				JobContext job = optJobContext.get();
+				if (job.status().isTerminal()) {
+					userContext.send(new Failure("Job is already " + job.status()));
+					continue;
+				}
+
+				// snapshot before aborted() runs releaseResources(), which clears assignedWorkstations()
+				List<String> assignedHosts = new ArrayList<>(job.assignedWorkstations());
+
+				jobRegistry.aborted(jobId);
+
+				for (String hostName : assignedHosts) {
+					workstationRegistry.find(hostName).ifPresent(station -> {
+						station.sendAsync(new AbortJobOnStation(jobId));
+						station.releaseSlot();
+					});
+				}
+
+				Path jobDir = baseDirPath.resolve("job_" + jobId.value());
+				DirCreator.recursivelyDeleteDirOnPath(jobDir);
+
+				userContext.send(new JobAborted(jobId));
 			} else if (received instanceof Bye ignored) {
 
 				// client closed the connection everything should keep running anyway

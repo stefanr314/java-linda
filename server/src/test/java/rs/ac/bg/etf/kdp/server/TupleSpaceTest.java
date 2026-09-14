@@ -210,4 +210,23 @@ class TupleSpaceTest {
 		assertThat(tupleSpace).extracting("tuples", as(InstanceOfAssertFactories.LIST))
 				.isEmpty();
 	}
+
+	@Test
+	void resetOnTupleSpaceShutdownsAllOldWaitingThreadsWithExceptionThrownAndProceedsGeneration() throws InterruptedException {
+		String[] template = {"tag", null};
+
+		CompletableFuture<String[]> matcher = CompletableFuture.supplyAsync(() -> {
+
+			tupleSpace.in(template);
+
+			return template;
+		});
+
+		Thread.sleep(100);  // give some time to worker thread to start up
+		tupleSpace.reset();
+
+		assertThatExceptionOfType(ExecutionException.class)
+				.isThrownBy(() -> matcher.get(2, TimeUnit.SECONDS))
+				.withCauseInstanceOf(SuspendedTupleSpaceException.class);
+	}
 }

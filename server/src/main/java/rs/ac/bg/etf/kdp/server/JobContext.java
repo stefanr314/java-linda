@@ -37,9 +37,9 @@ public final class JobContext {
 	terminal states and disconnection of station(s).
 	 */
 	private final Set<CloseableMessageSink> connections = ConcurrentHashMap.newKeySet();
+
 	private final Set<String> assignedWorkstations = ConcurrentHashMap.newKeySet();
 
-	private final UserContext userContext;
 	private final JobSpec spec;
 
 	// required to save if job gets delegated from broken station to working one
@@ -47,9 +47,9 @@ public final class JobContext {
 
 	// job counter received by server - serves no purpose, just required by specification of project
 	private final long jobNumber;
-
 	private final Instant arrivedAt = Instant.now();
 
+	private volatile UserContext userContext;
 	private String failureReason;
 
 	private volatile Instant completedAt;
@@ -59,9 +59,9 @@ public final class JobContext {
 	private volatile boolean fileTransmissionStopped;
 
 	public JobContext(JobId jobId, UserContext userContext, JobSpec spec, long jobCounter) {
-		this.jobId = jobId;
-		this.userContext = userContext;
-		this.spec = spec;
+		this.jobId = Objects.requireNonNull(jobId);
+		this.userContext = Objects.requireNonNull(userContext);
+		this.spec = Objects.requireNonNull(spec);
 		this.jobNumber = jobCounter;
 	}
 
@@ -70,7 +70,12 @@ public final class JobContext {
 	}
 
 	public UserContext userContext() {
-		return userContext;
+		return userContext;  // giving away context :(
+	}
+
+	void refreshUserContext(UserContext fresh) {
+		Objects.requireNonNull(fresh);
+		this.userContext = fresh;
 	}
 
 	public JobSpec specification() {

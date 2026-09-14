@@ -19,6 +19,10 @@ public final class UserContext {
 		messageSink.send(message);
 	}
 
+	public String user() {
+		return user;
+	}
+
 	public void disconnect() {
 		messageSink.close();
 	}

@@ -106,15 +106,20 @@ public final class WorkstationRegistrator {
 
 	private void cleanUpAfter(WorkstationContext station) {
 		for (JobContext job : jobRegistry.activeJobsOn(station.hostName())) {
+
 			// A job the station never got to start goes back in the queue; the client asked for it
 			// and nothing about it has run yet.
 			if (job.status() == JobStatus.SCHEDULED) {
 				jobRegistry.requeued(job.jobId());
 				continue;
 			}
+			// left only for path when waiting on user decision -> all other paths (requeued, failed, aborted) clear
+			// assignments
+			job.removeAssignedWorkstation(station.hostName()); // clean up the job context - since this station is gone
 			// A running job is a different matter: it may have produced partial output and its
 			// tuple space may hold state, so the assignment requires asking the user whether to
 			// reschedule or abort. Until that exists, fail it rather than silently rerun it.
+			// todo change
 			jobRegistry.failed(job.jobId(), "workstation " + station.hostName() + " was lost");
 		}
 		scheduler.scheduleReadyJobs();

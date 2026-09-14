@@ -162,21 +162,38 @@ public final class JobContext {
 	/**
 	 * Releases everything this job holds. Both steps are required and neither substitutes for the
 	 * other: closing the tuple space wakes threads parked in {@code await()}, closing the
-	 * connections wakes threads blocked in a socket read.
+	 * connections wakes threads blocked in a socket read. Clearing the set of assigned workstations is mandatory.
 	 * <p>
 	 * If job performed is not Linda job that this method
-	 * performs nothing useful.
+	 * performs cleanup of assigned workstations.
 	 * </p>
 	 */
 	void releaseResources() {
 		tupleSpace.close();
 		connections.forEach(CloseableMessageSink::close);
 		connections.clear();
+		assignedWorkstations.clear();
+	}
+
+	/**
+	 * Method for preparing the job for being run on different station. All other working nodes must be informed
+	 * that job will be reset -> so just close their connections (easiest way of informing them xD).
+	 */
+	void prepareRequeue() {
+//		tupleSpace.reset();  WIP
+		connections.forEach(CloseableMessageSink::close);
+		connections.clear();
+		assignedWorkstations.clear();
 	}
 
 
-	public void removeFailedStation(CloseableMessageSink socket, String workstationHostname) {
-		connections.remove(Objects.requireNonNull(socket));
+	/**
+	 * Method for removing station from assigned stations. Connection will be closed and removed from
+	 * {@code connections} with adequate LindaHandler.
+	 *
+	 * @param workstationHostname name of workstation to remove
+	 */
+	public void removeAssignedWorkstation(String workstationHostname) {
 		assignedWorkstations.remove(Objects.requireNonNull(workstationHostname));
 	}
 

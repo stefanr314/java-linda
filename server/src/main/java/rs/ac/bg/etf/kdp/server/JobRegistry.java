@@ -140,7 +140,7 @@ public final class JobRegistry {
 		// TODO count the number of tries to assign the particular job to the station - just give up after hitting
 		//  the threshold
 		transit(jobId, JobStatus.READY, job -> {
-			// todo implement
+			job.prepareRequeue();
 		});
 	}
 
@@ -163,8 +163,7 @@ public final class JobRegistry {
 	 * @return true if status is set to {@link JobStatus#DONE}; false otherwise.
 	 */
 	public boolean finished(JobId jobId) {
-		return transit(jobId, JobStatus.DONE, job -> {
-		});
+		return transit(jobId, JobStatus.DONE, JobContext::releaseResources);
 	}
 
 	/**
@@ -182,9 +181,13 @@ public final class JobRegistry {
 		});
 	}
 
-	// this method has some side effects
+	/**
+	 * Method for aborting the current job. It's required to perform a cleanup when abortion happens.
+	 *
+	 * @param jobId id of job
+	 */
 	public void aborted(JobId jobId) {
-		// todo: implement
+		transit(jobId, JobStatus.ABORTED, JobContext::releaseResources);
 	}
 
 	// private method for changing the status of jobs -> must be thread safe -> delegated to stack confinement and

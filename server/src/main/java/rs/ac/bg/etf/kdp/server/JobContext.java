@@ -169,7 +169,7 @@ public final class JobContext {
 	 * other: closing the tuple space wakes threads parked in {@code await()}, closing the
 	 * connections wakes threads blocked in a socket read. Clearing the set of assigned workstations is mandatory.
 	 * <p>
-	 * If job performed is not Linda job that this method
+	 * If job performed is not Linda job than this method
 	 * performs cleanup of assigned workstations.
 	 * </p>
 	 */
@@ -183,9 +183,11 @@ public final class JobContext {
 	/**
 	 * Method for preparing the job for being run on different station. All other working nodes must be informed
 	 * that job will be reset -> so just close their connections (easiest way of informing them xD).
+	 * <p>Prior to closing their connections it's required to wake them up if waiting on tuple space match.
+	 * {@link TupleSpace#reset()} performs that.</p>
 	 */
 	void prepareRequeue() {
-//		tupleSpace.reset();  WIP
+		tupleSpace.reset();
 		connections.forEach(CloseableMessageSink::close);
 		connections.clear();
 		assignedWorkstations.clear();

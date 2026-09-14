@@ -32,7 +32,8 @@ public final class TupleSpace implements Linda {
 	private final List<String[]> tuples = new ArrayList<>();
 	private final ReentrantLock lock = new ReentrantLock();
 	private final Condition tupleAvailable = lock.newCondition();
-	private boolean closed = false;
+	private boolean closed = false;  // changed under lock so happens before -> visibility ensured
+	private int generation = 0;  // generational count - when one job gets rescheduled to different station
 
 	/**
 	 * It is required that out command contains no null values since then blocking on null joker entries of in/rd or
@@ -116,11 +117,31 @@ public final class TupleSpace implements Linda {
 	 * An api method for closing the tuple space as reaction to aborted state. This actions also acquires the lock
 	 * and since happens-before is guaranteed no visibility on lock flag i.e. volatile field is required.
 	 */
-	public void close() {
+	void close() {
 		lock.lock();
 
 		try {
+			if (closed) return;
+
 			closed = true;
+			tupleAvailable.signalAll();
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/**
+	 * Method for resetting the tuple space when job is about to be re-run on different station (client requested
+	 * this when station failed). No old workers must remain waiting in tuple space.
+	 */
+	void reset() {
+		lock.lock();
+
+		try {
+			if (closed) return;
+
+			tuples.clear();
+			generation++;  // deactivate all workers prior to job requeue.
 			tupleAvailable.signalAll();
 		} finally {
 			lock.unlock();
@@ -134,12 +155,20 @@ public final class TupleSpace implements Linda {
 	 * Special suspended-interrupt action is allowed to occur, so waiting thread on condition's wait queue are
 	 * required to throw new exception which resembles the suspended action emerge.
 	 * </p>
+	 * <p>Also this method checks whether the generation i have started to wait on is still active one. The
+	 * generations change when the job resets on different station. Current implementation requests that job is
+	 * started again. Since the prior worker sleeps on this potentially it must be awakened. The rest of old worker
+	 * removal is done by linda handler.
 	 */
 	private String[] awaitMatch(String[] template) throws InterruptedException {
 		String[] match;
+		int myGeneration = generation;
 
 		while ((match = findMatch(template)) == null) {
 			if (closed) {
+				throw new SuspendedTupleSpaceException();
+			}
+			if (myGeneration != generation) {
 				throw new SuspendedTupleSpaceException();
 			}
 

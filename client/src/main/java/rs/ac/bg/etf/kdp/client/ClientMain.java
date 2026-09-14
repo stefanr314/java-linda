@@ -28,6 +28,7 @@ import java.util.logging.Logger;
  * list                     list every job known from the history file, numbered
  * status <n>      query the current status of job number n from the last 'list'
  * fetch <n> 	fetch and save the results of job number n from the last 'list'
+ * abort <n> 	abort job number n from the last 'list'
  * disconnect 											disconnect from server
  * quit                   												  exit
  * }</pre>
@@ -134,7 +135,7 @@ public final class ClientMain {
 	 * connects on demand through {@link JobClient}.
 	 */
 	public void repl() {
-		System.out.println("Commands: submit <config-file> | list | status <n> | fetch <n> | disconnect | quit");
+		System.out.println("Commands: submit <config-file> | list | status <n> | fetch <n> | abort <n> | disconnect | quit");
 
 		Scanner scanner = new Scanner(System.in);
 		for (; ; ) {
@@ -150,6 +151,7 @@ public final class ClientMain {
 				case "list" -> listKnownJobs(loadHistory());
 				case "status" -> handleStatus(parts);
 				case "fetch" -> handleFetch(parts);
+				case "abort" -> handleAbort(parts);
 				case "disconnect" -> {
 					client.disconnect();
 				}
@@ -213,6 +215,17 @@ public final class ClientMain {
 			System.out.println("Saved: " + written);
 		} catch (IOException | ClassNotFoundException failure) {
 			System.out.println("Could not fetch results. " + failure.getMessage());
+		}
+	}
+
+	private void handleAbort(String[] parts) {
+		JobId jobId = resolveIndex(parts, "abort");
+		if (jobId == null) return;
+
+		try {
+			System.out.println(client.abortJob(jobId));
+		} catch (IOException | ClassNotFoundException failure) {
+			System.out.println("Could not abort job: " + failure.getMessage());
 		}
 	}
 

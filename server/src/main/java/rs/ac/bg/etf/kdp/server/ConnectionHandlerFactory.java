@@ -27,12 +27,14 @@ public class ConnectionHandlerFactory {
 	private final WorkstationRegistrator workstationRegistrator;
 	private final JobRegistry jobRegistry;
 	private final Scheduler scheduler;
+	private final WorkstationRegistry workstationRegistry;
 
 	public ConnectionHandlerFactory(WorkstationRegistrator workstationRegistrator, JobRegistry jobRegistry,
-									Scheduler scheduler) {
+									Scheduler scheduler, WorkstationRegistry workstationRegistry) {
 		this.workstationRegistrator = workstationRegistrator;
 		this.jobRegistry = jobRegistry;
 		this.scheduler = scheduler;
+		this.workstationRegistry = workstationRegistry;
 	}
 
 	/**
@@ -51,7 +53,8 @@ public class ConnectionHandlerFactory {
 			handler = new WorkstationHandler(messageSink, in, workstationRegistrator, wsHello.wsInfo(), jobRegistry,
 					scheduler, BASE_DIR_PATH);
 		} else if (hello instanceof ClientHello clHello) {
-			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler, BASE_DIR_PATH);
+			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler, BASE_DIR_PATH,
+					workstationRegistry);
 		} else if (hello instanceof LindaHello lindaHello) {
 			System.out.println("Linda client connected " + lindaHello.jobId());
 		}

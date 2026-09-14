@@ -294,6 +294,11 @@ public final class WorkstationMain implements AutoCloseable {
 
 				DirCreator.recursivelyDeleteDirOnPath(jobDir);
 
+			} else if (received instanceof AbortJobOnStation abortJobOnStation) {
+				// must not do slow work - runs on the thread that answers heartbeat pings
+
+				jobExecutor.stopResultTransfer(abortJobOnStation.jobId());
+				jobExecutor.abort(abortJobOnStation.jobId());
 			} else if (received instanceof JobNotPresent jobNotPresent) {
 				// job was not found on server (INPUT FLOW)
 

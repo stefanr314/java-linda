@@ -71,6 +71,19 @@ public final class JobRegistry {
 	}
 
 	/**
+	 * Method for reattaching the new fresh connection to user on all jobs that are still not terminated. This is
+	 * required in order for broker to properly work.
+	 *
+	 * @param userContext new fresh user context.
+	 */
+	public void reattachUserContext(UserContext userContext) {
+		jobs.values().stream()
+				.filter(job -> !job.status().isTerminal())
+				.filter(job -> job.userContext().user().equals(userContext.user()))
+				.forEach(job -> job.refreshUserContext(userContext));
+	}
+
+	/**
 	 * Method for returning ready jobs with respect to FIFO based on arrived time.
 	 *
 	 * @return list of FIFO ready jobs based on arrived times.

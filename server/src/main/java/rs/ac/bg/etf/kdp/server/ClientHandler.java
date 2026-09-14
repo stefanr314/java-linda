@@ -3,8 +3,10 @@ package rs.ac.bg.etf.kdp.server;
 import rs.ac.bg.etf.kdp.common.*;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.ObjectInput;
+import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -53,26 +55,19 @@ public class ClientHandler implements ConnectionHandler {
 		UserContext userContext = new UserContext(messageSink, clientConnected);
 		userContext.send(new Reply("Welcome client %s.".formatted(clientConnected)));
 
+		// it's required for active jobs to have valid connection to user - initially does nothing.
+		jobRegistry.reattachUserContext(userContext);
+
 		try {
 			loop(userContext);
-		} catch (IOException e) {
-			// try catching the exception that are regular end time exception (server does handle this in some measure)
-			// if user is gone before the server finds out and at that time moment the station fails, the message
-			// sent by the HB will be caught here (by read operation) with the Socket Exception (broken pipe or so).
-			// That's sign to abort the job -> BUT WHAT CONNECTS THE CLIENT AND THE JOB (save the jobContext from
-			// below perhaps?) -> also it's tricky to check whether the station died here on just something else
-			// happened so the socket is close (ne mogu da ugasim posao ako jednostavnoe ne znam da li to treba da
-			// uradim jer je hb uocio mrtvu stanicu i klijent nije dostupan ili jednostavno pukao socket ka klijentu
-			// znaci zato mi treba neki flag na job contextu stanica mrtva ili nesto slicno).
-			throw new RuntimeException(e); //fixme
+		} catch (EOFException | SocketException e) {
+			LOGGER.info("Client %s closed the socket connection.".formatted(clientConnected));
 		} finally {
 			userContext.disconnect();  // close the user context
 
 			// close all open input files
 			fileReceiver.abandon();  // this function is pure so calling it more than once yields the same outcome
 
-			// remove from registry all jobs with status RECEIVING - there can be only one such file since input
-			// files transfer is sequential
 			if (currentJobId != null) {
 				// moving to failed status so we can see it in job log.
 				jobRegistry.failed(

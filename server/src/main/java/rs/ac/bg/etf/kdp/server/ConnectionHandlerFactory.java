@@ -28,13 +28,22 @@ public class ConnectionHandlerFactory {
 	private final JobRegistry jobRegistry;
 	private final Scheduler scheduler;
 	private final WorkstationRegistry workstationRegistry;
+	private final DecisionBroker broker;
 
 	public ConnectionHandlerFactory(WorkstationRegistrator workstationRegistrator, JobRegistry jobRegistry,
-									Scheduler scheduler, WorkstationRegistry workstationRegistry) {
+									Scheduler scheduler, WorkstationRegistry workstationRegistry,
+									DecisionBroker broker) {
 		this.workstationRegistrator = workstationRegistrator;
 		this.jobRegistry = jobRegistry;
 		this.scheduler = scheduler;
 		this.workstationRegistry = workstationRegistry;
+		this.broker = broker;
+	}
+
+	public ConnectionHandlerFactory(WorkstationRegistrator workstationRegistrator, JobRegistry jobRegistry,
+									Scheduler scheduler, WorkstationRegistry workstationRegistry) {
+		this(workstationRegistrator, jobRegistry, scheduler, workstationRegistry,
+				new DecisionBroker(jobRegistry, scheduler));
 	}
 
 	/**
@@ -54,7 +63,7 @@ public class ConnectionHandlerFactory {
 					scheduler, BASE_DIR_PATH);
 		} else if (hello instanceof ClientHello clHello) {
 			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler, BASE_DIR_PATH,
-					workstationRegistry);
+					workstationRegistry, broker);
 		} else if (hello instanceof LindaHello lindaHello) {
 			System.out.println("Linda client connected " + lindaHello.jobId());
 		}

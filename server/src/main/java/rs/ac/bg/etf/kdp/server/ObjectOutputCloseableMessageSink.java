@@ -48,4 +48,12 @@ public class ObjectOutputCloseableMessageSink implements CloseableMessageSink {
 			// here the exception is ignored since close on Closeable is required to be idempotent
 		}
 	}
+
+	@Override
+	public boolean isConnected() {
+		if (socket instanceof java.net.Socket s) {
+			return !s.isClosed();
+		}
+		return true;
+	}
 }

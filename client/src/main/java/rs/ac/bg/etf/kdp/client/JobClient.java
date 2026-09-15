@@ -267,18 +267,34 @@ public final class JobClient implements AutoCloseable {
 	 * @throws IOException if the job is unknown to the server or the reply is otherwise unexpected
 	 */
 	public JobStatus queryStatus(JobId jobId) throws IOException, ClassNotFoundException {
+		return queryStatusResponse(jobId).jobStatus();
+	}
+
+	public JobStatusResponse queryStatusResponse(JobId jobId) throws IOException, ClassNotFoundException {
 		ensureConnected();
 
 		send(new JobStatusQuery(jobId));
 		Object response = read();
 
 		if (response instanceof JobStatusResponse statusResponse) {
-			return statusResponse.jobStatus();
+			return statusResponse;
 		} else if (response instanceof JobNotPresent) {
 			throw new IOException("Job unknown to server: " + jobId.value());
 		} else {
 			throw new IOException("Unexpected reply: " + response.getClass().getSimpleName());
 		}
+	}
+
+	public String formatStatus(JobStatusResponse response) {
+		StringBuilder sb = new StringBuilder();
+		sb.append(response.jobStatus());
+		if (response.reasonOfFailure() != null && !response.reasonOfFailure().isBlank()) {
+			sb.append(" - ").append(response.reasonOfFailure());
+		}
+		if (response.pendingDecisionReason() != null && !response.pendingDecisionReason().isBlank()) {
+			sb.append("\n").append(response.pendingDecisionReason());
+		}
+		return sb.toString();
 	}
 
 	/**
@@ -307,6 +323,28 @@ public final class JobClient implements AutoCloseable {
 	}
 
 	/**
+	 * Sends a decision to reschedule a job waiting for a decision after its workstation was lost.
+	 *
+	 * @param jobId id of the job
+	 * @return a human-readable outcome
+	 * @throws IOException if communication fails
+	 */
+	public String rescheduleJob(JobId jobId) throws IOException, ClassNotFoundException {
+		ensureConnected();
+
+		send(new JobDecisionCommand(jobId, true));
+		Object response = read();
+
+		if (response instanceof Ack) {
+			return "Job rescheduled: " + jobId.value();
+		} else if (response instanceof Failure failure) {
+			return "Could not reschedule job " + jobId.value() + ": " + failure.message();
+		} else {
+			throw new IOException("Unexpected reply: " + response.getClass().getSimpleName());
+		}
+	}
+
+	/**
 	 * Aborts a job. Checks the current status first so nothing is sent to the server for a job that
 	 * has already reached a terminal state - there is nothing left to abort.
 	 *
@@ -316,11 +354,14 @@ public final class JobClient implements AutoCloseable {
 	public String abortJob(JobId jobId) throws IOException, ClassNotFoundException {
 		ensureConnected();
 
-		JobStatus status = queryStatus(jobId);
+		JobStatusResponse statusResponse = queryStatusResponse(jobId);
+		JobStatus status = statusResponse.jobStatus();
 		if (status.isTerminal()) {
 			return "Job " + jobId.value() + " is already " + status + "; nothing to abort.";
 		}
 
+		// at this point the job might come from broken station i.e. needing the decision to be made but this just
+		// gives the decision no matter what.
 		send(new AbortJobCommand(jobId));
 		Object response = read();
 

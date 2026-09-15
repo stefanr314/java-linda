@@ -2,6 +2,7 @@ package rs.ac.bg.etf.kdp.client;
 
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
+import rs.ac.bg.etf.kdp.common.protocol.JobStatusResponse;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -151,6 +152,7 @@ public final class ClientMain {
 				case "list" -> listKnownJobs(loadHistory());
 				case "status" -> handleStatus(parts);
 				case "fetch" -> handleFetch(parts);
+				case "reschedule" -> handleReschedule(parts);
 				case "abort" -> handleAbort(parts);
 				case "disconnect" -> {
 					client.disconnect();
@@ -200,9 +202,21 @@ public final class ClientMain {
 		if (jobId == null) return;
 
 		try {
-			System.out.println(client.queryStatus(jobId));
+			JobStatusResponse response = client.queryStatusResponse(jobId);
+			System.out.println(client.formatStatus(response));
 		} catch (IOException | ClassNotFoundException failure) {
 			System.out.println("Could not query status: " + failure.getMessage());
+		}
+	}
+
+	private void handleReschedule(String[] parts) {
+		JobId jobId = resolveIndex(parts, "reschedule");
+		if (jobId == null) return;
+
+		try {
+			System.out.println(client.rescheduleJob(jobId));
+		} catch (IOException | ClassNotFoundException failure) {
+			System.out.println("Could not reschedule job: " + failure.getMessage());
 		}
 	}
 

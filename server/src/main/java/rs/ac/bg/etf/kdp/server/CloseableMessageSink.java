@@ -12,4 +12,8 @@ public interface CloseableMessageSink extends Closeable {
 
 	@Override
 	void close();
+
+	default boolean isConnected() {
+		return true;
+	}
 }

@@ -26,4 +26,8 @@ public final class UserContext {
 	public void disconnect() {
 		messageSink.close();
 	}
+
+	public boolean isConnected() {
+		return messageSink.isConnected();
+	}
 }

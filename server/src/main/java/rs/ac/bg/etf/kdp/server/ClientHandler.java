@@ -27,6 +27,7 @@ public class ClientHandler implements ConnectionHandler {
 	private final Scheduler scheduler;
 	private final FileChunkReceiver fileReceiver;
 	private final WorkstationRegistry workstationRegistry;
+	private final DecisionBroker broker;
 
 	private final Path baseDirPath;
 
@@ -38,7 +39,8 @@ public class ClientHandler implements ConnectionHandler {
 						 JobRegistry jobRegistry,
 						 String clientConnected,
 						 Scheduler scheduler, Path baseDirPath,
-						 WorkstationRegistry workstationRegistry) {
+						 WorkstationRegistry workstationRegistry,
+						 DecisionBroker broker) {
 
 		this.messageSink = messageSink;
 		this.in = in;
@@ -48,6 +50,7 @@ public class ClientHandler implements ConnectionHandler {
 		this.scheduler = scheduler;
 		this.baseDirPath = baseDirPath;
 		this.workstationRegistry = workstationRegistry;
+		this.broker = broker;
 
 		this.fileReceiver = new ClientInputFilesReceiver();
 	}
@@ -284,7 +287,10 @@ public class ClientHandler implements ConnectionHandler {
 				}
 				JobContext job = optJobContext.get();
 				// check job status
-				userContext.send(new JobStatusResponse(queryJobStatus.jobId(), job.status()));
+				String reasonOfFailure = job.failureReason().orElse("");
+				String pendingDecisionReason = broker.pendingFor(queryJobStatus.jobId());
+				userContext.send(new JobStatusResponse(queryJobStatus.jobId(), job.status(), reasonOfFailure,
+						pendingDecisionReason != null ? pendingDecisionReason : ""));
 			} else if (received instanceof ResultsReceived resultReceived) {
 				// client has picked up the job (results or a terminal failure/abort) - delete the job dir
 				// and drop it from the registry so a later query correctly reports it as unknown.
@@ -323,6 +329,12 @@ public class ClientHandler implements ConnectionHandler {
 				DirCreator.recursivelyDeleteDirOnPath(jobDir);
 
 				userContext.send(new JobAborted(jobId));
+			} else if (received instanceof JobDecisionCommand decision) {
+				if (broker.decide(decision.jobId(), decision.reschedule())) {
+					userContext.send(new Ack());
+				} else {
+					userContext.send(new Failure("No pending decision for job " + decision.jobId().value()));
+				}
 			} else if (received instanceof Bye ignored) {
 
 				// client closed the connection everything should keep running anyway

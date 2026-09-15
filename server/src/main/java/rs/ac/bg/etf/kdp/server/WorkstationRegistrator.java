@@ -32,12 +32,20 @@ public final class WorkstationRegistrator {
 	private final HeartbeatPolicy heartbeatPolicy;
 	private final Scheduler scheduler;
 	private final JobRegistry jobRegistry;
+	private final DecisionBroker decisionBroker;
 
-	public WorkstationRegistrator(WorkstationRegistry registry, HeartbeatPolicy heartbeatPolicy, Scheduler scheduler, JobRegistry jobRegistry) {
+	public WorkstationRegistrator(WorkstationRegistry registry, HeartbeatPolicy heartbeatPolicy, Scheduler scheduler,
+								  JobRegistry jobRegistry, DecisionBroker decisionBroker) {
 		this.registry = Objects.requireNonNull(registry);
 		this.heartbeatPolicy = Objects.requireNonNull(heartbeatPolicy);
 		this.scheduler = scheduler;
 		this.jobRegistry = jobRegistry;
+		this.decisionBroker = Objects.requireNonNull(decisionBroker);
+	}
+
+	public WorkstationRegistrator(WorkstationRegistry registry, HeartbeatPolicy heartbeatPolicy, Scheduler scheduler,
+								  JobRegistry jobRegistry) {
+		this(registry, heartbeatPolicy, scheduler, jobRegistry, new DecisionBroker(jobRegistry, scheduler));
 	}
 
 	/**
@@ -116,11 +124,7 @@ public final class WorkstationRegistrator {
 			// left only for path when waiting on user decision -> all other paths (requeued, failed, aborted) clear
 			// assignments
 			job.removeAssignedWorkstation(station.hostName()); // clean up the job context - since this station is gone
-			// A running job is a different matter: it may have produced partial output and its
-			// tuple space may hold state, so the assignment requires asking the user whether to
-			// reschedule or abort. Until that exists, fail it rather than silently rerun it.
-			// todo change
-			jobRegistry.failed(job.jobId(), "workstation " + station.hostName() + " was lost");
+			decisionBroker.askAboutLostStation(job, station.hostName());
 		}
 		scheduler.scheduleReadyJobs();
 	}

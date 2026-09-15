@@ -9,5 +9,6 @@ import rs.ac.bg.etf.kdp.common.JobStatus;
  * @param jobId     id of job
  * @param jobStatus status of job.
  */
-public record JobStatusResponse(JobId jobId, JobStatus jobStatus) implements Message {
+public record JobStatusResponse(JobId jobId, JobStatus jobStatus, String reasonOfFailure,
+								String pendingDecisionReason) implements Message {
 }

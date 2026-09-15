@@ -53,6 +53,7 @@ public final class ServerMain implements AutoCloseable {
 	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
 	private final JobRegistry jobRegistry = new JobRegistry(jobLog);
 	private final Scheduler scheduler = new Scheduler(jobRegistry, workstationRegistry);
+	private final DecisionBroker decisionBroker;
 	private final HeartbeatDaemon heartbeat;
 	private final ConnectionHandlerFactory connectionHandlerFactory;
 	private final Map<Socket, Boolean> connections = new ConcurrentHashMap<>();
@@ -70,12 +71,14 @@ public final class ServerMain implements AutoCloseable {
 
 		HeartbeatPolicy heartbeatPolicy = new HeartbeatPolicy(intervalMillis, timeoutMillis);
 
+		this.decisionBroker = new DecisionBroker(jobRegistry, scheduler);
+
 		WorkstationRegistrator wsRegistrator = new WorkstationRegistrator(workstationRegistry, heartbeatPolicy,
-				scheduler, jobRegistry);
+				scheduler, jobRegistry, decisionBroker);
 		this.heartbeat = new HeartbeatDaemon(heartbeatPolicy, workstationRegistry);
 
 		this.connectionHandlerFactory = new ConnectionHandlerFactory(wsRegistrator, jobRegistry, scheduler,
-				workstationRegistry);
+				workstationRegistry, decisionBroker);
 	}
 
 	public static void main(String[] args) {
@@ -189,6 +192,7 @@ public final class ServerMain implements AutoCloseable {
 		running = false;
 		serverSocket.close();
 		heartbeat.close();
+		decisionBroker.close();
 
 		// close all the opened running connections
 		connections.keySet().forEach(socket ->
@@ -220,6 +224,10 @@ public final class ServerMain implements AutoCloseable {
 
 	public WorkstationRegistry workstations() {
 		return workstationRegistry;
+	}
+
+	public DecisionBroker decisionBroker() {
+		return decisionBroker;
 	}
 
 	public int port() {

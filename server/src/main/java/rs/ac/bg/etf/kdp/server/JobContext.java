@@ -4,7 +4,6 @@ import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.JobStatus;
 
-import java.io.Closeable;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -102,8 +101,20 @@ public final class JobContext {
 		return tupleSpace;
 	}
 
-	public Set<Closeable> connections() {
+	public Set<CloseableMessageSink> connections() {
 		return Set.copyOf(connections);
+	}
+
+	void addLindaConnection(CloseableMessageSink newConnection) {
+		Objects.requireNonNull(newConnection);
+
+		connections.add(newConnection);
+	}
+
+	void removeLindaConnection(CloseableMessageSink closed) {
+		Objects.requireNonNull(closed);
+
+		connections.remove(closed);
 	}
 
 	public Set<String> assignedWorkstations() {

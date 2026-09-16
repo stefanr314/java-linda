@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -66,8 +67,11 @@ public class LostWorkstationDecisionIT {
 
 		assertThat(station1Registered.await(10, TimeUnit.SECONDS)).isTrue();
 
-		try (JobClient client = new JobClient("localhost", server.port(), "it-user", tempDir.resolve("history.log"))) {
-			JobSpec spec = new JobSpec("job.jar", "java -jar job.jar", List.of("input.txt"), List.of());
+		try (JobClient client = new JobClient("localhost", server.port(),
+				"it-user", tempDir.resolve("history.log"))) {
+
+			JobSpec spec = new JobSpec("job.jar", "java -jar job.jar",
+					List.of("input.txt"), List.of());
 			JobId jobId = client.submit(spec, tempDir);
 
 			assertThat(station1Running.await(10, TimeUnit.SECONDS)).isTrue();
@@ -76,6 +80,10 @@ public class LostWorkstationDecisionIT {
 			// Disconnect workstation 1
 			stopStation1.countDown();
 			station1.join(5000);
+
+			assertThat(station1.isAlive()).isFalse();
+
+			awaitUntil(2000, () -> server.workstations().find("fake-station-1").isEmpty());
 
 			// Poll status until pending decision appears
 			JobStatusResponse statusResponse = awaitPendingDecision(client, jobId, 10_000);
@@ -149,6 +157,19 @@ public class LostWorkstationDecisionIT {
 
 			JobStatusResponse response = client.queryStatusResponse(jobId);
 			assertThat(response.pendingDecisionReason()).isBlank();
+		}
+	}
+
+	private void awaitUntil(long timeoutMillis, BooleanSupplier supplier) throws InterruptedException {
+		long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+
+		for (; ; ) {
+			if (System.nanoTime() > deadline) {
+				throw new IllegalStateException("Timed out on polling mechanism");
+			}
+			if (supplier.getAsBoolean()) return;
+
+			Thread.sleep(100);
 		}
 	}
 

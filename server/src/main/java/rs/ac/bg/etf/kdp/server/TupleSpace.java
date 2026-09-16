@@ -2,6 +2,7 @@ package rs.ac.bg.etf.kdp.server;
 
 import rs.ac.bg.etf.kdp.common.Linda;
 import rs.ac.bg.etf.kdp.common.TupleMatcher;
+import rs.ac.bg.etf.kdp.common.exceptions.OutsideTupleSpaceInterruptedException;
 import rs.ac.bg.etf.kdp.common.exceptions.SuspendedTupleSpaceException;
 
 import java.io.Serial;
@@ -83,7 +84,7 @@ public final class TupleSpace implements Linda {
 			waitMatchAndRemove(tuple, true);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
-			throw new SuspendedTupleSpaceException();
+			throw new OutsideTupleSpaceInterruptedException();
 		}
 	}
 
@@ -99,7 +100,7 @@ public final class TupleSpace implements Linda {
 			waitMatchAndRemove(tuple, false);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
-			throw new SuspendedTupleSpaceException();
+			throw new OutsideTupleSpaceInterruptedException();
 		}
 	}
 
@@ -214,7 +215,7 @@ public final class TupleSpace implements Linda {
 			lock.unlock();
 		}
 
-		// filling is done outside the lock since no data race can occur on local variables; also its better
+		// filling is done outside the lock since no data race can occur on local variables; also the better
 		// practice is to hold the lock for shorter duration
 		TupleMatcher.fillIn(tuple, match);
 	}
@@ -232,12 +233,18 @@ public final class TupleSpace implements Linda {
 
 		lock.lock();
 		try {
-			if ((match = findMatch(tuple)) == null) return false;
+			if ((match = findMatch(tuple)) == null) {
+				if (closed) throw new SuspendedTupleSpaceException();
+
+				return false;
+			}
 
 			if (remove) tuples.remove(match);
 		} finally {
 			lock.unlock();
 		}
+
+		if (closed) throw new SuspendedTupleSpaceException();
 
 		TupleMatcher.fillIn(tuple, match);
 		return true;

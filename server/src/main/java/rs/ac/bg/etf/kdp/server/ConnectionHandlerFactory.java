@@ -65,7 +65,7 @@ public class ConnectionHandlerFactory {
 			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler, BASE_DIR_PATH,
 					workstationRegistry, broker);
 		} else if (hello instanceof LindaHello lindaHello) {
-			System.out.println("Linda client connected " + lindaHello.jobId());
+			handler = new LindaHandler(messageSink, in, jobRegistry, lindaHello.jobId());
 		}
 
 		return handler;

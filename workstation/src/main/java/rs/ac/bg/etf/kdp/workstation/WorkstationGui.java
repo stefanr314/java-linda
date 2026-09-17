@@ -66,7 +66,8 @@ public final class WorkstationGui {
 	}
 
 	private void show() {
-		Logger.getLogger("").addHandler(new TextAreaLogHandler(logArea));
+		java.util.logging.Handler handler = new TextAreaLogHandler(logArea);
+		Logger.getLogger("").addHandler(handler);
 
 		frame = new JFrame("java-linda workstation");
 		frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
@@ -74,6 +75,7 @@ public final class WorkstationGui {
 			@Override
 			public void windowClosing(WindowEvent e) {
 				stopWorkstation();
+				Logger.getLogger("").removeHandler(handler);
 				frame.dispose();
 			}
 		});

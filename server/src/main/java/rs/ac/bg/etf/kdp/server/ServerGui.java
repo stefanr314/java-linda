@@ -55,8 +55,16 @@ public final class ServerGui {
 		SwingUtilities.invokeLater(() -> new ServerGui().show());
 	}
 
+	private static JPanel labeled(String title, Component content) {
+		JPanel panel = new JPanel(new BorderLayout());
+		panel.add(new JLabel(title), BorderLayout.NORTH);
+		panel.add(content, BorderLayout.CENTER);
+		return panel;
+	}
+
 	private void show() {
-		Logger.getLogger("").addHandler(new TextAreaLogHandler(logArea));
+		java.util.logging.Handler handler = new TextAreaLogHandler(logArea);
+		Logger.getLogger("").addHandler(handler);
 
 		frame = new JFrame("java-linda server");
 		frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
@@ -64,7 +72,7 @@ public final class ServerGui {
 			@Override
 			public void windowClosing(WindowEvent e) {
 				stopServer();
-				frame.dispose();
+				Logger.getLogger("").removeHandler(handler);
 			}
 		});
 
@@ -130,13 +138,6 @@ public final class ServerGui {
 		return panel;
 	}
 
-	private static JPanel labeled(String title, Component content) {
-		JPanel panel = new JPanel(new BorderLayout());
-		panel.add(new JLabel(title), BorderLayout.NORTH);
-		panel.add(content, BorderLayout.CENTER);
-		return panel;
-	}
-
 	// Runs on the EDT (button ActionListener); only the blocking part is pushed off it.
 	private void startServer() {
 		final int port;
@@ -199,23 +200,28 @@ public final class ServerGui {
 		});
 	}
 
-	// Runs on the EDT (button ActionListener or windowClosing).
 	private void stopServer() {
 		if (poller != null) {
 			poller.shutdownNow();
 			poller = null;
 		}
 
-		ServerMain current = server;
-		server = null;
+		Thread thread = new Thread(() -> {
+			ServerMain current = server;
+			server = null;
 
-		if (current != null) {
-			try {
-				current.close();
-			} catch (IOException ignored) {
-				// already logged internally by ServerMain
+			if (current != null) {
+				try {
+					current.close();
+					SwingUtilities.invokeLater(frame::dispose);
+				} catch (IOException ignored) {
+					// already logged internally by ServerMain
+				}
 			}
-		}
+		});
+
+		thread.setDaemon(true);
+		thread.start();
 
 		cards.show(cardPanel, "config");
 	}

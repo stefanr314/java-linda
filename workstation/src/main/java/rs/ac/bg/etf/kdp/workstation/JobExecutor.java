@@ -134,6 +134,22 @@ public final class JobExecutor {
 	}
 
 	/**
+	 * How many jobs this workstation could still accept right now. For the GUI's periodic poll;
+	 * safe to call from any thread.
+	 */
+	public int freeSlots() {
+		return parallelismCapacity - acceptedJobs.get();
+	}
+
+	/**
+	 * Snapshot of the jobs currently running (process started, not yet terminated). For the GUI's
+	 * periodic poll; safe to call from any thread.
+	 */
+	public Set<JobId> runningJobIds() {
+		return Set.copyOf(runningJobs.keySet());
+	}
+
+	/**
 	 * Called from the control thread when the server can no longer store this job's results.
 	 */
 	public void stopResultTransfer(JobId jobId) {

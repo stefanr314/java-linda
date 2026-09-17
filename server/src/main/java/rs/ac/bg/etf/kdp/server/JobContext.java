@@ -85,6 +85,10 @@ public final class JobContext {
 		return arrivedAt;
 	}
 
+	public long jobNumber() {
+		return jobNumber;
+	}
+
 	public Optional<Instant> completedAt() {
 		return Optional.ofNullable(completedAt);
 	}

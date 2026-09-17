@@ -24,7 +24,7 @@ import java.util.logging.Logger;
  * waits for jobs and {@code eval()} work to run.
  *
  * <p>Pass {@code --headless} to run without a UI; see {@link
- * WorkstationGui} for the (placeholder) graphical entry point.
+ * WorkstationGui} for the graphical entry point.
  */
 public final class WorkstationMain implements AutoCloseable {
 
@@ -342,6 +342,10 @@ public final class WorkstationMain implements AutoCloseable {
 	 */
 	public WorkstationInfo workstationInfo() {
 		return new WorkstationInfo(hostname, os, javaVersion, parallelismCapacity);
+	}
+
+	public JobExecutor jobExecutor() {
+		return jobExecutor;
 	}
 
 	private void reactToFileReceiptFailure(JobId jobId, Runnable reaction) throws IOException {

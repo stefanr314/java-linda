@@ -226,6 +226,10 @@ public final class ServerMain implements AutoCloseable {
 		return workstationRegistry;
 	}
 
+	public JobLog jobLog() {
+		return jobLog;
+	}
+
 	public DecisionBroker decisionBroker() {
 		return decisionBroker;
 	}

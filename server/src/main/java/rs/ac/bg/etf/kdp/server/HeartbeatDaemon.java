@@ -68,15 +68,9 @@ public class HeartbeatDaemon implements AutoCloseable {
 				LOGGER.log(Level.WARNING,
 						("Workstation %s did not respond before the timeout. " +
 								"Sweeping will be performed.").formatted(workstation.hostName()));
-				//TODO: client must determine the future of job - AT THIS POINT WS CAN NOT RECONNECT
 
-				// check whether station had any jobs on it by reaching the job registry
-
-				// reach the user context to write him a message - if connection is closed an exception will
-				// eventually be thrown; perhaps the first message succeeds but the client handler will read the RST
-				// eventually and will return with the exception;
-
-				// let the HB catch the Socket Exception and call the job registry to abort the job
+				// disconnecting triggers the un-registrator method to be run on leaving station. This method knows
+				// what to do with which job.
 				workstation.disconnect();
 				continue;
 			}

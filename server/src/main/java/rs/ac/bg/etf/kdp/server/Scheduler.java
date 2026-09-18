@@ -27,7 +27,7 @@ public final class Scheduler {
 	 * is strictly the responsibility of job registry to properly set the status and if terminal not to change it.
 	 * <p>
 	 * This method can be called by multiple threads leading to undesired outcomes when executed by multiple threads,
-	 * such as the same ready job being forwarded to multiple stations on execution. But explicit synchronization
+	 * such as the same ready job being forwarded to multiple stations for execution. But explicit synchronization
 	 * (with intrinsic lock per se) can be swapped with the leightweight atomic operation which checks and sets the
 	 * status of job in one go. If another thread took the precendance just proceed to the next ready job in queue.
 	 * </p>
@@ -36,9 +36,10 @@ public final class Scheduler {
 		// NOTE: ready jobs is just a snapshot so upon tacking the ready jobs it's required to hold a lock and try to
 		// update the status of the job to scheduled
 
-		// get the ready jobs
 		List<JobContext> readyJobs = jobRegistry.readyJobs();
 		if (readyJobs.isEmpty()) return;
+
+		if (workstationRegistry.workstations().isEmpty()) return;  // no stations present just return
 
 		// it's required to firstly try to set the state and then to act upon it, since vise verse might lead to data
 		// races and execution/forwarding duplication of single job. With this one thread works with one ready job at
@@ -60,13 +61,8 @@ public final class Scheduler {
 
 			try {
 				station.send(new JobDispatch(job.jobId(), job.specification())); // the socket might be
-				// closed at this moment - if workstation initiates the graceful shutdown this might be sent SO WS
-				// HANDLER MUST CHECK THIS TOO - OR DELEGATE IT TO THE REGISTRATOR unregister
-				// todo: so its required to check whether there are some jobs in scheduled state too when unregister
-				//  happens
+				// closed at this moment
 			} catch (IOException e) {
-				// if exception thrown when writing to the station it's required to release the slot hold for that station
-				// and return the status to ready once again.
 				LOGGER.info("Station socket not reachable. On station: " + station.hostName());
 
 				station.releaseSlot();

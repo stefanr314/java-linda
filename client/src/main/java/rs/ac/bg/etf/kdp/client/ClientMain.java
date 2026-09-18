@@ -136,7 +136,8 @@ public final class ClientMain {
 	 * connects on demand through {@link JobClient}.
 	 */
 	public void repl() {
-		System.out.println("Commands: submit <config-file> | list | status <n> | fetch <n> | abort <n> | disconnect | quit");
+		System.out.println("Commands: submit <config-file> | list | status <n> " +
+				"| fetch <n> | abort <n> | disconnect | quit");
 
 		Scanner scanner = new Scanner(System.in);
 		for (; ; ) {

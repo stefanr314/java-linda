@@ -1,9 +1,11 @@
 package rs.ac.bg.etf.kdp.workstation;
 
+import rs.ac.bg.etf.kdp.common.GUIFormBuilder;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.gui.TextAreaLogHandler;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -34,7 +36,17 @@ public final class WorkstationGui {
 	private static final long POLL_INTERVAL_MILLIS = 1000;
 
 	private final CardLayout cards = new CardLayout();
-	private final JPanel cardPanel = new JPanel(cards);
+	private final JPanel cardPanel = new JPanel(cards) {
+		@Override
+		public Dimension getPreferredSize() {
+			// CardLayout reports the largest card, which would make the small config screen as big
+			// as the running screen. Report the visible one instead.
+			for (Component child : getComponents()) {
+				if (child.isVisible()) return child.getPreferredSize();
+			}
+			return super.getPreferredSize();
+		}
+	};
 
 	private final JTextField hostField = new JTextField("localhost", 12);
 	private final JTextField portField = new JTextField("4040", 6);
@@ -55,7 +67,22 @@ public final class WorkstationGui {
 	}
 
 	public static void main(String[] args) {
-		SwingUtilities.invokeLater(() -> new WorkstationGui().show());
+		try {
+			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+
+			Font base = new Font("SansSerif", Font.PLAIN, 14);
+			for (Object key : UIManager.getLookAndFeelDefaults().keySet()) {
+				if (key.toString().endsWith(".font")) UIManager.put(key, base);
+			}
+		} catch (Exception ignored) {
+		}
+		WorkstationGui gui = new WorkstationGui();
+		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+			WorkstationMain workstation = gui.workstation;
+
+			if (workstation != null) workstation.jobExecutor().destroyAll();
+		}, "workstation-shutdown"));
+		SwingUtilities.invokeLater(gui::show);
 	}
 
 	private static JPanel labeled(String title, Component content) {
@@ -74,15 +101,13 @@ public final class WorkstationGui {
 		frame.addWindowListener(new WindowAdapter() {
 			@Override
 			public void windowClosing(WindowEvent e) {
-				stopWorkstation();
-				Logger.getLogger("").removeHandler(handler);
-				frame.dispose();
+				exitApplication(handler);
 			}
 		});
 
 		cardPanel.add(buildConfigPanel(), "config");
 		cardPanel.add(buildRunningPanel(), "running");
-		cards.show(cardPanel, "config");
+		showCard("config");
 
 		frame.getContentPane().add(cardPanel);
 		frame.pack();
@@ -90,25 +115,45 @@ public final class WorkstationGui {
 		frame.setVisible(true);
 	}
 
+	private void exitApplication(java.util.logging.Handler handler) {
+		Logger.getLogger("").removeHandler(handler);
+		stopWorkstation(() -> frame.dispose());
+	}
+
 	private JPanel buildConfigPanel() {
-		JPanel form = new JPanel(new GridLayout(0, 2, 8, 8));
-		form.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+		JPanel titlePane = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 8));
 
-		form.add(new JLabel("Server host:"));
-		form.add(hostField);
-		form.add(new JLabel("Server port:"));
-		form.add(portField);
-		form.add(new JLabel("Parallel job capacity:"));
-		form.add(capacityField);
+		JLabel title = new JLabel("Welcome to workstation config panel");
+		Font titleFont = title.getFont();
+		Font bolded = titleFont.deriveFont(Font.BOLD, 18f);
+		title.setFont(bolded);
+		title.setBorder(BorderFactory.createEmptyBorder(8, 4, 8, 4));
 
+		titlePane.add(title);
+		JPanel form = new GUIFormBuilder()
+				.addRow("Server host:", hostField)
+				.addRow("Server port: ", portField)
+				.addRow("Station parallelism capacity: ", capacityField)
+				.build();
+
+		JPanel buttonPane = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
 		JButton startButton = new JButton("Start");
 		startButton.addActionListener(e -> startWorkstation());
+		buttonPane.add(startButton);
 
 		JPanel panel = new JPanel(new BorderLayout());
+		panel.add(titlePane, BorderLayout.NORTH);
 		panel.add(form, BorderLayout.CENTER);
-		panel.add(startButton, BorderLayout.SOUTH);
+		panel.add(buttonPane, BorderLayout.SOUTH);
 		return panel;
 	}
+
+	private void showCard(String name) {
+		cards.show(cardPanel, name);
+		frame.pack();                        // recompute from the visible card only
+		frame.setLocationRelativeTo(null);   // keep it centred after the resize
+	}
+
 
 	private JPanel buildRunningPanel() {
 		JPanel info = new JPanel(new GridLayout(0, 2, 8, 8));
@@ -116,23 +161,33 @@ public final class WorkstationGui {
 		info.add(new JLabel("Name:"));
 		info.add(nameLabel);
 		info.add(new JLabel("OS:"));
+		osLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 		info.add(osLabel);
 		info.add(new JLabel("Java:"));
 		info.add(javaLabel);
 		info.add(new JLabel("Free slots:"));
 		info.add(freeSlotsLabel);
 
+		JPanel buttonPane = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+
 		JButton stopButton = new JButton("Stop");
-		stopButton.addActionListener(e -> stopWorkstation());
+		stopButton.addActionListener(e -> stopWorkstation(() -> showCard("config")));
+
+		buttonPane.add(stopButton);
+		buttonPane.setBorder(new EmptyBorder(20, 0, 0, 0));
 
 		JPanel top = new JPanel(new BorderLayout());
 		top.add(info, BorderLayout.CENTER);
-		top.add(stopButton, BorderLayout.EAST);
+		top.add(buttonPane, BorderLayout.EAST);
 
 		JList<String> runningJobsList = new JList<>(runningJobsModel);
 
+		runningJobsList.setVisibleRowCount(10);
+
 		logArea.setEditable(false);
-		logArea.setRows(8);
+		logArea.setRows(12);
+		logArea.setColumns(80);
+		logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 
 		JSplitPane center = new JSplitPane(
 				JSplitPane.VERTICAL_SPLIT,
@@ -142,7 +197,9 @@ public final class WorkstationGui {
 		center.setResizeWeight(0.3);
 
 		JPanel panel = new JPanel(new BorderLayout());
-		panel.setPreferredSize(new Dimension(500, 450));
+		panel.setBorder(BorderFactory.createEmptyBorder(12, 10, 12, 10));
+
+//		panel.setPreferredSize(new Dimension(500, 450));
 		panel.add(top, BorderLayout.NORTH);
 		panel.add(center, BorderLayout.CENTER);
 		return panel;
@@ -184,21 +241,9 @@ public final class WorkstationGui {
 
 		this.workstation = started;
 
-		// mirrors WorkstationMain.main(): destroy children even if this process dies unexpectedly
-		Runtime.getRuntime().addShutdownHook(new Thread(started.jobExecutor()::destroyAll));
-
 		SwingUtilities.invokeLater(() -> onWorkstationStarted(started));
 
-		try {
-			started.run(); // blocks until the connection ends, one way or another
-		} finally {
-			try {
-				started.close();
-			} catch (IOException ignored) {
-				// already logged internally by WorkstationMain
-			}
-			SwingUtilities.invokeLater(this::onWorkstationStopped);
-		}
+		started.run(); // reacting on closing performed outside
 	}
 
 	// EDT-confined: only called via invokeLater from runWorkstation().
@@ -214,7 +259,7 @@ public final class WorkstationGui {
 		});
 		poller.scheduleWithFixedDelay(this::poll, 0, POLL_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
 
-		cards.show(cardPanel, "running");
+		showCard("running");
 	}
 
 	// Runs on the poller thread, off the EDT: reads are cheap (atomic / copy-on-read), the actual
@@ -233,27 +278,30 @@ public final class WorkstationGui {
 		});
 	}
 
-	// Runs on the EDT (button ActionListener or windowClosing). Only closes the connection; the
-	// starter thread's own finally block resets the UI once run() actually returns.
-	private void stopWorkstation() {
-		WorkstationMain current = workstation;
-		if (current == null) return;
+	/*
+	Method for stopping the statio and performing the afterwards action on EDT
+	 */
+	private void stopWorkstation(Runnable afterwards) {
+		Thread closer = new Thread(() -> {
+			WorkstationMain current = workstation;
+			if (current == null) return;
 
-		try {
-			current.close();
-		} catch (IOException ignored) {
-			// already logged internally by WorkstationMain
-		}
-	}
+			try {
+				current.close();
+			} catch (IOException ignored) {
+				// already logged internally by WorkstationMain
+			}
 
-	// EDT-confined: only called via invokeLater from runWorkstation()'s finally block.
-	private void onWorkstationStopped() {
-		if (poller != null) {
-			poller.shutdownNow();
-			poller = null;
-		}
+			if (poller != null) {
+				poller.shutdownNow();
+				poller = null;
+			}
 
-		workstation = null;
-		cards.show(cardPanel, "config");
+			workstation = null;
+			SwingUtilities.invokeLater(afterwards);
+		});
+
+		closer.setDaemon(true);
+		closer.start();
 	}
 }

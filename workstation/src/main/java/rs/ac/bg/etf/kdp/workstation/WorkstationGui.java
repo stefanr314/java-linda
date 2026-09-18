@@ -76,6 +76,7 @@ public final class WorkstationGui {
 			}
 		} catch (Exception ignored) {
 		}
+
 		WorkstationGui gui = new WorkstationGui();
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			WorkstationMain workstation = gui.workstation;
@@ -282,23 +283,24 @@ public final class WorkstationGui {
 	Method for stopping the statio and performing the afterwards action on EDT
 	 */
 	private void stopWorkstation(Runnable afterwards) {
+		if (poller != null) {
+			poller.shutdownNow();
+			poller = null;
+		}
+
 		Thread closer = new Thread(() -> {
 			WorkstationMain current = workstation;
-			if (current == null) return;
-
-			try {
-				current.close();
-			} catch (IOException ignored) {
-				// already logged internally by WorkstationMain
-			}
-
-			if (poller != null) {
-				poller.shutdownNow();
-				poller = null;
-			}
-
 			workstation = null;
-			SwingUtilities.invokeLater(afterwards);
+
+			if (current != null) {
+				try {
+					current.close();
+				} catch (IOException ignored) {
+					// already logged internally by WorkstationMain
+				}
+			}
+
+			SwingUtilities.invokeLater(afterwards);  // do the action no matter what
 		});
 
 		closer.setDaemon(true);

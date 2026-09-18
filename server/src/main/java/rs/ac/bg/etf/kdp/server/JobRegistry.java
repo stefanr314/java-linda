@@ -43,7 +43,7 @@ public final class JobRegistry {
 		JobContext context = new JobContext(jobId, userContext, spec, jobCounter.getAndIncrement());
 		jobs.put(jobId, context);
 
-		jobLog.append(context);
+		jobLog.append(context, "Fresh job registered. ID: " + jobId.value());
 
 		LOGGER.log(Level.INFO, "Registered {0}", context);
 		return context;
@@ -117,7 +117,7 @@ public final class JobRegistry {
 	 */
 	public void assignedTo(JobId jobId, String hostName) {
 		getContext(jobId).assignNewWorkstation(hostName);
-		jobLog.append(getContext(jobId));
+		jobLog.append(getContext(jobId), "Assigned to station: " + hostName);
 	}
 
 	/**
@@ -127,8 +127,10 @@ public final class JobRegistry {
 	 * @param jobId id of job that become {@link JobStatus#READY}.
 	 */
 	public void ready(JobId jobId) {
-		transit(jobId, JobStatus.READY, ignored -> {
-		});
+		transit(jobId, JobStatus.READY,
+				ignored -> {
+				},
+				"Job is ready to be scheduled to station.");
 	}
 
 	/**
@@ -145,16 +147,21 @@ public final class JobRegistry {
 	 * @return outcome of operation of trying to transit to {@link JobStatus#SCHEDULED} state.
 	 */
 	public boolean scheduled(JobId jobId) {
-		return transit(jobId, JobStatus.SCHEDULED, (ignored) -> {
-		});
+		return transit(jobId,
+				JobStatus.SCHEDULED, (ignored) -> {
+				},
+				"Job is scheduled to station.");
 	}
 
 	public void requeued(JobId jobId) {
 		// TODO count the number of tries to assign the particular job to the station - just give up after hitting
 		//  the threshold
-		transit(jobId, JobStatus.READY, job -> {
-			job.prepareRequeue();
-		});
+		transit(jobId,
+				JobStatus.READY,
+				job -> {
+					job.prepareRequeue();
+				},
+				"Job is being rescheduled to get run on different station.");
 	}
 
 	/**
@@ -163,8 +170,10 @@ public final class JobRegistry {
 	 * @param jobId id of job that transits to {@link JobStatus#RUNNING} state.
 	 */
 	public void running(JobId jobId) {
-		transit(jobId, JobStatus.RUNNING, job -> {
-		});
+		transit(jobId,
+				JobStatus.RUNNING, job -> {
+				},
+				"Job running on station");
 	}
 
 	/**
@@ -176,7 +185,7 @@ public final class JobRegistry {
 	 * @return true if status is set to {@link JobStatus#DONE}; false otherwise.
 	 */
 	public boolean finished(JobId jobId) {
-		return transit(jobId, JobStatus.DONE, JobContext::releaseResources);
+		return transit(jobId, JobStatus.DONE, JobContext::releaseResources, "Job is DONE.");
 	}
 
 	/**
@@ -188,10 +197,15 @@ public final class JobRegistry {
 	 * @return true if status is set to {@link JobStatus#FAILED}; false otherwise.
 	 */
 	public boolean failed(JobId jobId, String reason) {
-		return transit(jobId, JobStatus.FAILED, jobContext -> {
-			jobContext.recordFailure(reason);
-			jobContext.releaseResources();
-		});
+		return transit(
+				jobId,
+				JobStatus.FAILED,
+				jobContext -> {
+					jobContext.recordFailure(reason);
+					jobContext.releaseResources();
+				},
+				"Job failed. Reason: " + reason
+		);
 	}
 
 	/**
@@ -200,12 +214,12 @@ public final class JobRegistry {
 	 * @param jobId id of job
 	 */
 	public void aborted(JobId jobId) {
-		transit(jobId, JobStatus.ABORTED, JobContext::releaseResources);
+		transit(jobId, JobStatus.ABORTED, JobContext::releaseResources, "Job was aborted.");
 	}
 
 	// private method for changing the status of jobs -> must be thread safe -> delegated to stack confinement and
 	// atomic operations on collaborators
-	private boolean transit(JobId jobId, JobStatus next, Consumer<JobContext> consumer) {
+	private boolean transit(JobId jobId, JobStatus next, Consumer<JobContext> consumer, String logMessage) {
 		JobContext context = getContext(jobId);
 
 		if (!context.tryChangeStatus(next)) {
@@ -213,7 +227,7 @@ public final class JobRegistry {
 		}
 
 		// conduct some side effect logic before returning
-		jobLog.append(context);
+		jobLog.append(context, logMessage);
 		consumer.accept(context);
 
 		return true;

@@ -1,5 +1,9 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.JobId;
+import rs.ac.bg.etf.kdp.common.JobStatus;
+
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -9,17 +13,26 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * status.
  */
 public final class JobLog {
-	
-	private final List<JobContext> entries = new CopyOnWriteArrayList<>();
+
+	private final List<JobLogEntry> entries = new CopyOnWriteArrayList<>();
 
 	/**
 	 * Appends a new entry to the log. Existing entries are never modified
 	 * or removed.
 	 *
-	 * @param entry the entry to append
+	 * @param job the entry to append
 	 */
-	public void append(JobContext entry) {
-		entries.add(entry);
+	public void append(JobContext job, String detail) {
+		JobLogEntry logEntry = new JobLogEntry(
+				Instant.now(),
+				job.jobNumber(),
+				job.jobId(),
+				job.status(),
+				String.join(", ", job.assignedWorkstations()),
+				detail
+		);
+		entries.add(logEntry);
+		// todo write me to file
 	}
 
 	/**
@@ -28,7 +41,18 @@ public final class JobLog {
 	 *
 	 * @return the full log
 	 */
-	public List<JobContext> entries() {
+	public List<JobLogEntry> entries() {
 		return List.copyOf(entries);
+	}
+
+	/**
+	 * One immutable line of the audit trail. Snapshot.
+	 */
+	public record JobLogEntry(Instant at,
+							  long jobNumber,
+							  JobId jobId,
+							  JobStatus status,
+							  String workstation,
+							  String detail) {
 	}
 }

@@ -160,12 +160,12 @@ public final class ServerGui {
 		JTable workstationTable = new JTable(workstationTableModel);
 		workstationTable.setFillsViewportHeight(true);
 		workstationTable.setAutoCreateRowSorter(true);
-		workstationTable.setPreferredScrollableViewportSize(new Dimension(800, 150));
+		workstationTable.setPreferredScrollableViewportSize(new Dimension(1250, 150));
 
 		JTable jobTable = new JTable(jobTableModel);
 		jobTable.setFillsViewportHeight(true);
 		jobTable.setAutoCreateRowSorter(true);
-		jobTable.setPreferredScrollableViewportSize(new Dimension(800, 150));
+		jobTable.setPreferredScrollableViewportSize(new Dimension(1250, 250));
 
 		JSplitPane tables = new JSplitPane(
 				JSplitPane.VERTICAL_SPLIT,
@@ -175,8 +175,8 @@ public final class ServerGui {
 		tables.setResizeWeight(0.5);
 
 		logArea.setEditable(false);
-		logArea.setRows(12);
-		logArea.setColumns(80);
+		logArea.setRows(15);
+		logArea.setColumns(85);
 		logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 		JScrollPane logScroll = new JScrollPane(logArea);
 
@@ -256,7 +256,7 @@ public final class ServerGui {
 		if (current == null) return;
 
 		List<WorkstationContext> workstations = List.copyOf(current.workstations().workstations());
-		List<JobContext> jobs = current.jobLog().entries();
+		List<JobLog.JobLogEntry> jobs = current.jobLog().entries();
 
 		SwingUtilities.invokeLater(() -> {
 			workstationTableModel.setData(workstations);
@@ -333,15 +333,15 @@ public final class ServerGui {
 
 	private static final class JobTableModel extends AbstractTableModel {
 
-		private static final String[] COLUMNS = {"Arrived", "Job #", "Machine", "Completed", "Status"};
+		private static final String[] COLUMNS = {"Arrived", "Job #", "ID", "Status", "Station", "Context"};
 
 		private static final DateTimeFormatter TIME_FORMAT =
 				DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
 
-		private List<JobContext> data = List.of();
+		private List<JobLog.JobLogEntry> data = List.of();
 
 		// EDT-confined: only ever called from ServerGui.poll()'s invokeLater.
-		void setData(List<JobContext> data) {
+		void setData(List<JobLog.JobLogEntry> data) {
 			this.data = data;
 			fireTableDataChanged();
 		}
@@ -363,13 +363,14 @@ public final class ServerGui {
 
 		@Override
 		public Object getValueAt(int rowIndex, int columnIndex) {
-			JobContext job = data.get(rowIndex);
+			JobLog.JobLogEntry jobEntry = data.get(rowIndex);
 			return switch (columnIndex) {
-				case 0 -> TIME_FORMAT.format(job.arrivedAt());
-				case 1 -> job.jobNumber();
-				case 2 -> String.join(", ", job.assignedWorkstations());
-				case 3 -> job.completedAt().map(TIME_FORMAT::format).orElse("");
-				case 4 -> job.status();
+				case 0 -> TIME_FORMAT.format(jobEntry.at());
+				case 1 -> jobEntry.jobNumber();
+				case 2 -> jobEntry.jobId().value();
+				case 3 -> jobEntry.status();
+				case 4 -> jobEntry.workstation();
+				case 5 -> jobEntry.detail();
 				default -> throw new IllegalArgumentException("Unknown column " + columnIndex);
 			};
 		}

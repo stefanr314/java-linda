@@ -143,13 +143,36 @@ public final class JobClient implements AutoCloseable {
 	}
 
 	/**
-	 * Connects if there is no live connection, or the previous one was closed. Every public method
-	 * below that talks to the server calls this first, which is what makes this client lazy: nothing
-	 * has to call {@link #connect()} up front. {@link #connect()} is itself idempotent (a no-op if
-	 * already connected), so this is just that call under a name that says why it's there.
+	 * <p>Used as initial guard when making communication towards the server. Used inside the
+	 * reconnection part{@link #connect()} is itself idempotent (a no-op if already connected), so this is just that
+	 * call under a name that says why it's there.</p>
 	 */
 	private void ensureConnected() throws IOException, ClassNotFoundException {
 		connect();
+	}
+
+	/**
+	 * Method for reconnecting as a reaction to server socket read timeout elapse. Since user side never reads prior to
+	 * write the FIN sent from server is not read until RST flag is read -> leading to unpleasant user behaviour. If the
+	 * send throws again after reconnection or upon trying to reconnect then the server is indeed gone. Prior to
+	 * reconnecting ensure connected is called. If that method throws exception exit happens prior to reconnection try.
+	 *
+	 * @param message message to be sent to server
+	 * @throws IOException            upon working with underlying IO system
+	 * @throws ClassNotFoundException upon reading not recognized class
+	 */
+	private void trySendAndRetryOnce(Object message) throws IOException, ClassNotFoundException {
+		ensureConnected();  // ensure there is connection
+		try {
+			send(message);  // try to send it once than just throw error if the other send fails
+		} catch (IOException stale) {
+			// The server drops idle connections after its read timeout. We only find out when we
+			// write, because a half-closed socket still looks open on this side until then.
+			LOGGER.log(Level.FINE, "Connection was stale, reconnecting", stale);
+			socket = null;
+			connect(); // set the new connection
+			send(message);  // try sending again if this fails server is gone
+		}
 	}
 
 	/**
@@ -198,9 +221,8 @@ public final class JobClient implements AutoCloseable {
 	 *                     the connection broke while uploading
 	 */
 	public JobId submit(JobSpec spec, Path sourceDir) throws IOException, ClassNotFoundException {
-		ensureConnected();
 
-		send(new JobSubmitCommand(spec));
+		trySendAndRetryOnce(new JobSubmitCommand(spec));
 
 		Object response = read();
 		JobId jobId;
@@ -273,9 +295,8 @@ public final class JobClient implements AutoCloseable {
 	}
 
 	public JobStatusResponse queryStatusResponse(JobId jobId) throws IOException, ClassNotFoundException {
-		ensureConnected();
 
-		send(new JobStatusQuery(jobId));
+		trySendAndRetryOnce(new JobStatusQuery(jobId));
 		Object response = read();
 
 		if (response instanceof JobStatusResponse statusResponse) {
@@ -332,9 +353,8 @@ public final class JobClient implements AutoCloseable {
 	 * @throws IOException if communication fails
 	 */
 	public String rescheduleJob(JobId jobId) throws IOException, ClassNotFoundException {
-		ensureConnected();
 
-		send(new JobDecisionCommand(jobId, true));
+		trySendAndRetryOnce(new JobDecisionCommand(jobId, true));
 		Object response = read();
 
 		if (response instanceof Ack) {
@@ -354,8 +374,6 @@ public final class JobClient implements AutoCloseable {
 	 * @throws IOException if the job is unknown to the server or the reply is otherwise unexpected
 	 */
 	public String abortJob(JobId jobId) throws IOException, ClassNotFoundException {
-		ensureConnected();
-
 		JobStatusResponse statusResponse = queryStatusResponse(jobId);
 		JobStatus status = statusResponse.jobStatus();
 		if (status.isTerminal()) {
@@ -364,7 +382,7 @@ public final class JobClient implements AutoCloseable {
 
 		// at this point the job might come from broken station i.e. needing the decision to be made but this just
 		// gives the decision no matter what.
-		send(new AbortJobCommand(jobId));
+		trySendAndRetryOnce(new AbortJobCommand(jobId));
 		Object response = read();
 
 		if (response instanceof JobAborted) {
@@ -396,9 +414,7 @@ public final class JobClient implements AutoCloseable {
 			throw new IOException("Job result already known. Check the history log.");
 		}
 
-		ensureConnected();
-
-		send(new JobResultQuery(jobId));
+		trySendAndRetryOnce(new JobResultQuery(jobId));
 		Object response = read();
 
 		if (response instanceof JobNotPresent) {
@@ -514,7 +530,7 @@ public final class JobClient implements AutoCloseable {
 			LOGGER.info("You have already disconnected from this server.");
 			return;
 		}
-		;
+
 		try {
 			send(new Bye());
 		} catch (IOException ignored) {

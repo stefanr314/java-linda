@@ -1,5 +1,6 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.GUIFormBuilder;
 import rs.ac.bg.etf.kdp.common.gui.TextAreaLogHandler;
 
 import javax.swing.*;
@@ -36,7 +37,17 @@ public final class ServerGui {
 	private static final long POLL_INTERVAL_MILLIS = 1000;
 
 	private final CardLayout cards = new CardLayout();
-	private final JPanel cardPanel = new JPanel(cards);
+	private final JPanel cardPanel = new JPanel(cards) {
+		@Override
+		public Dimension getPreferredSize() {
+			// CardLayout reports the largest card, which would make the small config screen as big
+			// as the running screen. Report the visible one instead.
+			for (Component child : getComponents()) {
+				if (child.isVisible()) return child.getPreferredSize();
+			}
+			return super.getPreferredSize();
+		}
+	};
 
 	private final JTextField portField = new JTextField("4040", 6);
 	private final JTextField heartbeatIntervalField = new JTextField("10000", 6);
@@ -52,6 +63,15 @@ public final class ServerGui {
 	private ScheduledExecutorService poller;
 
 	public static void main(String[] args) {
+		try {
+			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+			Font base = new Font("SansSerif", Font.PLAIN, 14);
+			for (Object key : UIManager.getLookAndFeelDefaults().keySet()) {
+				if (key.toString().endsWith(".font")) UIManager.put(key, base);
+			}
+		} catch (Exception ignored) {
+
+		}
 		SwingUtilities.invokeLater(() -> new ServerGui().show());
 	}
 
@@ -71,38 +91,61 @@ public final class ServerGui {
 		frame.addWindowListener(new WindowAdapter() {
 			@Override
 			public void windowClosing(WindowEvent e) {
-				stopServer();
-				Logger.getLogger("").removeHandler(handler);
+				exitApplication(handler);
+
 			}
 		});
 
 		cardPanel.add(buildConfigPanel(), "config");
 		cardPanel.add(buildRunningPanel(), "running");
-		cards.show(cardPanel, "config");
+		showCard("config");
+//		cards.show(cardPanel, "config");
 
 		frame.getContentPane().add(cardPanel);
 		frame.pack();
-		frame.setLocationRelativeTo(null);
+		frame.setMinimumSize(new Dimension(400, 250));
+
+		frame.setLocationRelativeTo(null);  // center
 		frame.setVisible(true);
+
+		portField.requestFocusInWindow();
+	}
+
+
+	private void exitApplication(java.util.logging.Handler handler) {
+		Logger.getLogger("").removeHandler(handler);
+		stopServer(() -> frame.dispose());
 	}
 
 	private JPanel buildConfigPanel() {
-		JPanel form = new JPanel(new GridLayout(0, 2, 8, 8));
-		form.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+		JPanel titlePane = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 8));
 
-		form.add(new JLabel("Bind port:"));
-		form.add(portField);
-		form.add(new JLabel("Heartbeat interval (ms):"));
-		form.add(heartbeatIntervalField);
-		form.add(new JLabel("Heartbeat timeout (ms):"));
-		form.add(heartbeatTimeoutField);
+		JLabel title = new JLabel("Welcome to server config menu");
+		Font titleFont = title.getFont();
+		Font bolded = titleFont.deriveFont(Font.BOLD, 18f);
+		title.setFont(bolded);
+		title.setBorder(BorderFactory.createEmptyBorder(8, 4, 8, 4));
+
+		titlePane.add(title);
+
+		JPanel form = new GUIFormBuilder()
+				.addRow("Bind port:", portField)
+				.addRow("Heartbeat interval (ms):", heartbeatIntervalField)
+				.addRow("Heartbeat timeout (ms):", heartbeatTimeoutField)
+				.build();
 
 		JButton startButton = new JButton("Start");
 		startButton.addActionListener(e -> startServer());
 
+		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+		buttons.add(startButton);
+
 		JPanel panel = new JPanel(new BorderLayout());
+//		panel.setPreferredSize(new Dimension(400, 300));
+
+		panel.add(titlePane, BorderLayout.NORTH);
 		panel.add(form, BorderLayout.CENTER);
-		panel.add(startButton, BorderLayout.SOUTH);
+		panel.add(buttons, BorderLayout.SOUTH);
 		return panel;
 	}
 
@@ -111,11 +154,18 @@ public final class ServerGui {
 		top.add(boundPortLabel, BorderLayout.WEST);
 
 		JButton stopButton = new JButton("Stop");
-		stopButton.addActionListener(e -> stopServer());
+		stopButton.addActionListener(e -> stopServer(() -> showCard("config")));
 		top.add(stopButton, BorderLayout.EAST);
 
 		JTable workstationTable = new JTable(workstationTableModel);
+		workstationTable.setFillsViewportHeight(true);
+		workstationTable.setAutoCreateRowSorter(true);
+		workstationTable.setPreferredScrollableViewportSize(new Dimension(800, 150));
+
 		JTable jobTable = new JTable(jobTableModel);
+		jobTable.setFillsViewportHeight(true);
+		jobTable.setAutoCreateRowSorter(true);
+		jobTable.setPreferredScrollableViewportSize(new Dimension(800, 150));
 
 		JSplitPane tables = new JSplitPane(
 				JSplitPane.VERTICAL_SPLIT,
@@ -125,17 +175,27 @@ public final class ServerGui {
 		tables.setResizeWeight(0.5);
 
 		logArea.setEditable(false);
-		logArea.setRows(8);
+		logArea.setRows(12);
+		logArea.setColumns(80);
+		logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 		JScrollPane logScroll = new JScrollPane(logArea);
 
 		JSplitPane center = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tables, labeled("Log", logScroll));
 		center.setResizeWeight(0.7);
 
 		JPanel panel = new JPanel(new BorderLayout());
-		panel.setPreferredSize(new Dimension(700, 500));
+		panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+//		panel.setPreferredSize(new Dimension(700, 500));
 		panel.add(top, BorderLayout.NORTH);
 		panel.add(center, BorderLayout.CENTER);
 		return panel;
+	}
+
+	private void showCard(String name) {
+		cards.show(cardPanel, name);
+		frame.pack();                        // recompute from the visible card only
+		frame.setLocationRelativeTo(null);   // keep it centred after the resize
 	}
 
 	// Runs on the EDT (button ActionListener); only the blocking part is pushed off it.
@@ -173,6 +233,9 @@ public final class ServerGui {
 	// EDT-confined: only called via invokeLater from startServer().
 	private void onServerStarted(ServerMain started) {
 		this.server = started;
+		Font font = boundPortLabel.getFont();
+		Font bolded = font.deriveFont(Font.BOLD, 16f);
+		boundPortLabel.setFont(bolded);
 		boundPortLabel.setText("Listening on port " + started.port());
 
 		poller = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -182,7 +245,8 @@ public final class ServerGui {
 		});
 		poller.scheduleWithFixedDelay(this::poll, 0, POLL_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
 
-		cards.show(cardPanel, "running");
+		showCard("running");
+//		cards.show(cardPanel, "running");
 	}
 
 	// Runs on the poller thread, off the EDT: snapshots are cheap (copy-on-read collections), the
@@ -200,7 +264,7 @@ public final class ServerGui {
 		});
 	}
 
-	private void stopServer() {
+	private void stopServer(Runnable afterwards) {
 		if (poller != null) {
 			poller.shutdownNow();
 			poller = null;
@@ -213,17 +277,16 @@ public final class ServerGui {
 			if (current != null) {
 				try {
 					current.close();
-					SwingUtilities.invokeLater(frame::dispose);
+
 				} catch (IOException ignored) {
 					// already logged internally by ServerMain
 				}
 			}
+			SwingUtilities.invokeLater(afterwards);
 		});
 
 		thread.setDaemon(true);
 		thread.start();
-
-		cards.show(cardPanel, "config");
 	}
 
 	private static final class WorkstationTableModel extends AbstractTableModel {

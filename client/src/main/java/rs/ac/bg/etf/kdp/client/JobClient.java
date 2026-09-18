@@ -111,9 +111,11 @@ public final class JobClient implements AutoCloseable {
 					"Server at " + serverHost + ":" + serverPort + " does not speak the java-linda protocol",
 					notOurServer);
 		} catch (SocketTimeoutException timeout) {
+			LOGGER.log(Level.INFO, "Socket timeout occurred.");
 			newSocket.close();
 			throw timeout;
 		} catch (IOException failure) {
+			LOGGER.log(Level.INFO, "Socket IO occurred.");
 			newSocket.close();
 			throw failure;
 		}

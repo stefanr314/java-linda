@@ -1,11 +1,13 @@
 package rs.ac.bg.etf.kdp.client;
 
+import rs.ac.bg.etf.kdp.common.GUIFormBuilder;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
 import rs.ac.bg.etf.kdp.common.gui.TextAreaLogHandler;
 import rs.ac.bg.etf.kdp.common.protocol.JobStatusResponse;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import javax.swing.table.AbstractTableModel;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
@@ -42,7 +44,17 @@ public final class ClientGui {
 			DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
 	private final CardLayout cards = new CardLayout();
-	private final JPanel cardPanel = new JPanel(cards);
+	private final JPanel cardPanel = new JPanel(cards) {
+		@Override
+		public Dimension getPreferredSize() {
+			// CardLayout reports the largest card, which would make the small config screen as big
+			// as the running screen. Report the visible one instead.
+			for (Component child : getComponents()) {
+				if (child.isVisible()) return child.getPreferredSize();
+			}
+			return super.getPreferredSize();
+		}
+	};
 
 	private final JTextField hostField = new JTextField("localhost", 14);
 	private final JTextField portField = new JTextField("4040", 6);
@@ -61,14 +73,17 @@ public final class ClientGui {
 	private final JButton rescheduleButton = new JButton("Reschedule");
 	private final JButton disconnectButton = new JButton("Disconnect");
 	private final JTextArea logArea = new JTextArea();
+
 	// EDT-confined: written from a Submit's success callback and a Status success callback, both
 	// invokeLater-marshaled; read only from action listeners on the EDT.
 	private final Map<String, List<String>> expectedOutputsByJobId = new HashMap<>();
 	private final Map<String, String> pendingDecisionByJobId = new HashMap<>();
 	private JFrame frame;
+
 	// EDT-confined: assigned only from onConnected()/onDisconnected(), both of which run via
 	// invokeLater; read only from action listeners, which already run on the EDT.
 	private JobClient client;
+
 	// EDT-confined: same discipline as client above.
 	private boolean operationRunning = false;
 	private JobId selectedJobId;
@@ -77,6 +92,14 @@ public final class ClientGui {
 	}
 
 	public static void main(String[] args) {
+		try {
+			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+			Font base = new Font("SansSerif", Font.PLAIN, 14);
+			for (Object key : UIManager.getLookAndFeelDefaults().keySet()) {
+				if (key.toString().endsWith(".font")) UIManager.put(key, base);
+			}
+		} catch (Exception ignored) {
+		}
 		SwingUtilities.invokeLater(() -> new ClientGui().show());
 	}
 
@@ -109,7 +132,7 @@ public final class ClientGui {
 
 		cardPanel.add(buildConfigPanel(), "config");
 		cardPanel.add(buildRunningPanel(), "running");
-		cards.show(cardPanel, "config");
+		showCard("config");
 
 		frame.getContentPane().add(cardPanel);
 		frame.pack();
@@ -118,41 +141,59 @@ public final class ClientGui {
 	}
 
 	private JPanel buildConfigPanel() {
-		JPanel form = new JPanel(new GridLayout(0, 2, 10, 8));
-		form.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
-		form.add(new JLabel("Server host:"));
-		form.add(hostField);
-		form.add(new JLabel("Server port:"));
-		form.add(portField);
-		form.add(new JLabel("User name:"));
-		form.add(userField);
-		form.add(new JLabel("Job history file:"));
-		form.add(historyField);
+		JPanel titlePane = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 8));
+
+		JLabel title = new JLabel("Connect to your server");
+		Font titleFont = title.getFont();
+		Font bolded = titleFont.deriveFont(Font.BOLD, 18f);
+		title.setFont(bolded);
+		title.setBorder(BorderFactory.createEmptyBorder(8, 4, 8, 4));
+
+		titlePane.add(title);
+
+		JPanel form = new GUIFormBuilder()
+				.addRow("Server host:", hostField)
+				.addRow("Server port:", portField)
+				.addRow("User name:", userField)
+				.addRow("Job history file:", historyField)
+				.build();
 
 		connectButton.addActionListener(e -> connect());
 
+		JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+		buttonPanel.setBorder(new EmptyBorder(0, 20, 0, 20));
+
+		buttonPanel.add(connectButton);
+
 		JPanel panel = new JPanel(new BorderLayout());
+		panel.add(titlePane, BorderLayout.NORTH);
 		panel.add(form, BorderLayout.CENTER);
-		panel.add(connectButton, BorderLayout.SOUTH);
+		panel.add(buttonPanel, BorderLayout.SOUTH);
 		return panel;
 	}
 
 	private JPanel buildRunningPanel() {
 		JPanel top = new JPanel(new BorderLayout());
 		top.add(connectionLabel, BorderLayout.WEST);
-		top.add(disconnectButton, BorderLayout.EAST);
+		JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+		right.add(disconnectButton);
+		top.add(right, BorderLayout.EAST);
 
 		jobTable.getSelectionModel().addListSelectionListener(e -> onSelectionChanged());
+		jobTable.setPreferredScrollableViewportSize(new Dimension(700, 200));
 		JScrollPane tableScroll = new JScrollPane(jobTable);
 
-		JPanel buttons = new JPanel(new GridLayout(0, 1, 4, 4));
 		refreshButton.addActionListener(e -> refreshTable());
 		submitButton.addActionListener(e -> submit());
 		statusButton.addActionListener(e -> status());
 		fetchButton.addActionListener(e -> fetch());
 		abortButton.addActionListener(e -> abort());
 		rescheduleButton.addActionListener(e -> reschedule());
+		disconnectButton.addActionListener(e -> disconnect());
+
+		JPanel buttons = new JPanel(new GridLayout(2, 3, 6, 6));
+		buttons.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
 		buttons.add(refreshButton);
 		buttons.add(submitButton);
 		buttons.add(statusButton);
@@ -162,10 +203,12 @@ public final class ClientGui {
 
 		JPanel jobsPanel = new JPanel(new BorderLayout());
 		jobsPanel.add(tableScroll, BorderLayout.CENTER);
-		jobsPanel.add(buttons, BorderLayout.EAST);
+		jobsPanel.add(buttons, BorderLayout.SOUTH);
 
 		logArea.setEditable(false);
-		logArea.setRows(8);
+		logArea.setRows(12);
+		logArea.setColumns(80);
+		logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 
 		JSplitPane center = new JSplitPane(
 				JSplitPane.VERTICAL_SPLIT,
@@ -175,10 +218,17 @@ public final class ClientGui {
 		center.setResizeWeight(0.6);
 
 		JPanel panel = new JPanel(new BorderLayout());
-		panel.setPreferredSize(new Dimension(750, 550));
+		panel.setBorder(BorderFactory.createEmptyBorder(12, 10, 12, 10));
+//		panel.setPreferredSize(new Dimension(750, 550));
 		panel.add(top, BorderLayout.NORTH);
 		panel.add(center, BorderLayout.CENTER);
 		return panel;
+	}
+
+	private void showCard(String name) {
+		cards.show(cardPanel, name);
+		frame.pack();                        // recompute from the visible card only
+		frame.setLocationRelativeTo(null);   // keep it centred after the resize
 	}
 
 	// EDT-confined: only called from the selection listener, which already runs on the EDT.
@@ -239,11 +289,17 @@ public final class ClientGui {
 	// EDT-confined: only reached via the invokeLater callback of runOffEdt in connect().
 	private void onConnected(JobClient connected, String host, int port, String user) {
 		this.client = connected;
-		connectionLabel.setText("Connected to " + host + ":" + port + " as " + user);
+
+		Font font = connectionLabel.getFont();
+		Font bolded = font.deriveFont(Font.BOLD, 16f);
+		connectionLabel.setFont(bolded);
+		connectionLabel.setText("Connected to " + host + ": " + port + " as " + user);
+//		connectionLabel.setBorder(new EmptyBorder(0, 40, 0, 0));
+
 		selectedJobId = null;
 		expectedOutputsByJobId.clear();
 		pendingDecisionByJobId.clear();
-		cards.show(cardPanel, "running");
+		showCard("running");
 		refreshTable();
 	}
 
@@ -266,7 +322,7 @@ public final class ClientGui {
 	private void onDisconnected() {
 		client = null;
 		selectedJobId = null;
-		cards.show(cardPanel, "config");
+		showCard("config");
 	}
 
 	// EDT-confined (window listener). Disconnects off the EDT, then disposes once that completes.

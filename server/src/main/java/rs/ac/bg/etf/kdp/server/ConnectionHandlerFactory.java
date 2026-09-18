@@ -22,7 +22,7 @@ import java.nio.file.Path;
  */
 public class ConnectionHandlerFactory {
 
-	private static final Path BASE_DIR_PATH = Path.of(System.getProperty("java.io.tmpdir"), "server_jobs");
+	private static final Path BASE_JOBS_DIR_PATH = Path.of(System.getProperty("java.io.tmpdir"), "server_jobs");
 
 	private final WorkstationRegistrator workstationRegistrator;
 	private final JobRegistry jobRegistry;
@@ -60,9 +60,9 @@ public class ConnectionHandlerFactory {
 
 		if (hello instanceof WorkstationHello wsHello) {
 			handler = new WorkstationHandler(messageSink, in, workstationRegistrator, wsHello.wsInfo(), jobRegistry,
-					scheduler, BASE_DIR_PATH);
+					scheduler, BASE_JOBS_DIR_PATH);
 		} else if (hello instanceof ClientHello clHello) {
-			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler, BASE_DIR_PATH,
+			handler = new ClientHandler(messageSink, in, jobRegistry, clHello.user(), scheduler, BASE_JOBS_DIR_PATH,
 					workstationRegistry, broker);
 		} else if (hello instanceof LindaHello lindaHello) {
 			handler = new LindaHandler(messageSink, in, jobRegistry, lindaHello.jobId());

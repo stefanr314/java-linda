@@ -21,7 +21,21 @@ public final class PathUtil {
 		throw new IOException("Linda client not found on project path");
 	}
 
+	public static Path getServerBasePath() {
+		Path cwd = Path.of("").toAbsolutePath();
+
+		while (cwd != null) {
+			if (Files.exists(cwd.resolve("server"))) {
+				return cwd.resolve("server");
+			}
+			cwd = cwd.getParent();
+		}
+
+		return Path.of("").toAbsolutePath();
+	}
+
 	private static boolean dirContainsLindaDir(Path dir) {
 		return Files.exists(dir.resolve("linda-client"));
 	}
+
 }

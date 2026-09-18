@@ -49,14 +49,19 @@ public final class ServerMain implements AutoCloseable {
 
 	private final ExecutorService executor = Executors.newCachedThreadPool();
 	private final ServerSocket serverSocket;
+
 	private final JobLog jobLog = new JobLog();
+
 	private final WorkstationRegistry workstationRegistry = new WorkstationRegistry();
 	private final JobRegistry jobRegistry = new JobRegistry(jobLog);
+
 	private final Scheduler scheduler = new Scheduler(jobRegistry, workstationRegistry);
 	private final DecisionBroker decisionBroker;
 	private final HeartbeatDaemon heartbeat;
+	
 	private final ConnectionHandlerFactory connectionHandlerFactory;
 	private final Map<Socket, Boolean> connections = new ConcurrentHashMap<>();
+
 	private volatile boolean running;
 
 	public ServerMain(int port) throws IOException {

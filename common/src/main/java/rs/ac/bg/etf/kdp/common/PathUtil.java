@@ -7,18 +7,7 @@ import java.nio.file.Path;
 public final class PathUtil {
 
 	public static Path getLindaClientPath() throws IOException {
-		Path cwd = Path.of("").toAbsolutePath();
-
-		while (cwd != null) {
-			if (dirContainsLindaDir(cwd)) {
-				return cwd.resolve("linda-client")
-						.resolve("target")
-						.resolve("linda-client-1.0-SNAPSHOT.jar");
-			}
-			cwd = cwd.getParent();
-		}
-
-		throw new IOException("Linda client not found on project path");
+		return findModuleJar("linda-client");
 	}
 
 	/**
@@ -28,18 +17,21 @@ public final class PathUtil {
 	 * not in the linda-client jar.
 	 */
 	public static Path getCommonPath() throws IOException {
-		Path cwd = Path.of("").toAbsolutePath();
+		return findModuleJar("common");
+	}
 
-		while (cwd != null) {
-			if (dirContainsCommonModule(cwd)) {
-				return cwd.resolve("common")
-						.resolve("target")
-						.resolve("common-1.0-SNAPSHOT.jar");
+	private static Path findModuleJar(String module) throws IOException {
+		for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
+			if (Files.isDirectory(dir.resolve(module))) {
+				Path jar = dir.resolve(module).resolve("target").resolve(module + "-1.0-SNAPSHOT.jar");
+
+				if (!Files.isRegularFile(jar)) {
+					throw new IOException(jar + " does not exist - run 'mvn package' at the repository root");
+				}
+				return jar;
 			}
-			cwd = cwd.getParent();
 		}
-
-		throw new IOException("Common module not found on project path");
+		throw new IOException("Module '" + module + "' not found above " + Path.of("").toAbsolutePath());
 	}
 
 	public static Path getServerBasePath() {

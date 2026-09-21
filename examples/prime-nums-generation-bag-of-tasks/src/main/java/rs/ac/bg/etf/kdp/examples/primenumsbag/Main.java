@@ -51,6 +51,11 @@ public class Main {
 		// poison pill for workers
 		linda.out(new String[]{"stop"});
 
+		// let's wait for them a bit
+		for (int w = 0; w < NUM_OF_WORKERS; w++) {
+			linda.in(new String[]{"done", null});
+		}
+
 		try {
 			Files.writeString(Path.of("result.txt"),
 					Arrays.toString(primeNumbers),
@@ -71,10 +76,7 @@ public class Main {
 			primes[1] = 3;
 			int known = 2;
 
-			while (true) {
-				if (linda.rdp(new String[]{"stop"})) {
-					return;
-				}
+			while (!linda.rdp(new String[]{"stop"})) {
 				// take the task
 				String[] candidateTemplate = {"candidate", null};
 				linda.in(candidateTemplate);
@@ -99,6 +101,8 @@ public class Main {
 				}
 				linda.out(new String[]{"result", candidateTemplate[1], String.valueOf(isPrime)});
 			}
+
+			linda.out(new String[]{"done", "worker"});  // ack the main
 		}
 	}
 }

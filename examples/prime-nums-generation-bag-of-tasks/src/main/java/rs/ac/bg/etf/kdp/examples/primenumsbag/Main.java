@@ -4,6 +4,7 @@ import rs.ac.bg.etf.kdp.common.Linda;
 import rs.ac.bg.etf.kdp.lindaclient.LindaFactory;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -67,6 +68,9 @@ public class Main {
 	}
 
 	public static final class PrimeWorker implements Runnable, Serializable {
+		@Serial
+		private static final long serialVersionUID = 1L;
+		
 		@Override
 		public void run() {
 			Linda linda = LindaFactory.get();

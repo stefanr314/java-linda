@@ -6,6 +6,7 @@ import rs.ac.bg.etf.kdp.common.exceptions.LindaException;
 import rs.ac.bg.etf.kdp.common.protocol.*;
 
 import java.io.*;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Objects;
 import java.util.logging.Level;
@@ -27,6 +28,8 @@ import java.util.logging.Logger;
  */
 public final class LindaProxy implements Linda, AutoCloseable {
 
+	private static final int CONNECT_TIMEOUT_MILLIS = 5_000;
+	private static final int HANDSHAKE_TIMEOUT_MILLIS = 10_000;
 	/*
 	Never actually serialized.
 	 */
@@ -55,7 +58,10 @@ public final class LindaProxy implements Linda, AutoCloseable {
 		this.jobId = jobId;
 
 		try {
-			this.socket = new Socket(host, port);
+			this.socket = new Socket();
+			this.socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
+			this.socket.setSoTimeout(HANDSHAKE_TIMEOUT_MILLIS);
+
 			this.out = new ObjectOutputStream(this.socket.getOutputStream());
 			out.flush();
 
@@ -73,6 +79,7 @@ public final class LindaProxy implements Linda, AutoCloseable {
 			// ACK message is read at this line - just holds string "welcome linda client..." BORING
 
 			// ready and set to use the distributed linda in java :)
+			this.socket.setSoTimeout(0);  // reset the socket, waiting INF is allowed
 		} catch (IOException e) {
 			throw new LindaException("IO exception upon setting the communication with proxy", e);
 		} catch (ClassNotFoundException e) {

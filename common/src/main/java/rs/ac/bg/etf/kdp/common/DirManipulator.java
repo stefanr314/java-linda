@@ -1,8 +1,10 @@
 package rs.ac.bg.etf.kdp.common;
 
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.Objects;
 import java.util.logging.Level;
@@ -12,9 +14,9 @@ import java.util.stream.Stream;
 /**
  * Helper class for creating and deleting dirs.
  */
-public final class DirCreator {
+public final class DirManipulator {
 
-	private static final Logger LOGGER = Logger.getLogger(DirCreator.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(DirManipulator.class.getName());
 
 	public static void createDir(Path path) throws IOException {
 		Objects.requireNonNull(path);
@@ -57,7 +59,8 @@ public final class DirCreator {
 							try {
 								Files.delete(path);
 							} catch (IOException e) {
-								LOGGER.log(Level.WARNING, "Exception upon trying to delete the file on path: " + path, e);
+								LOGGER.log(Level.WARNING, "Exception upon trying to delete the file on path: "
+										+ path, e);
 							}
 						});
 			} catch (IOException e) {
@@ -65,7 +68,23 @@ public final class DirCreator {
 			}
 		} else {
 			LOGGER.log(Level.INFO,
-					"Target not directory or not found, dir was not present to be deleted. Target path: " + target);
+					"Target not directory or not found, dir was not present to be deleted. Target path: "
+							+ target);
+		}
+	}
+
+	/*
+	Plain per-file copy (not a whole-directory read into memory) of the parent job's input dir
+	into the child's - the eval worker class lives in the job jar, so the jar (and any other input
+	files the parent was submitted with) must be present for the worker's process too.
+	 */
+	public static void copyDirContents(Path sourceDir, Path targetDir) throws IOException {
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(sourceDir)) {
+			for (Path entry : entries) {
+				if (Files.isRegularFile(entry)) {
+					Files.copy(entry, targetDir.resolve(entry.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+				}
+			}
 		}
 	}
 }

@@ -1,5 +1,7 @@
 package rs.ac.bg.etf.kdp.server;
 
+import rs.ac.bg.etf.kdp.common.JobId;
+import rs.ac.bg.etf.kdp.common.protocol.EvalDispatch;
 import rs.ac.bg.etf.kdp.common.protocol.JobDispatch;
 
 import java.io.IOException;
@@ -68,6 +70,42 @@ public final class Scheduler {
 				station.releaseSlot();
 				jobRegistry.requeued(job.jobId());
 			}
+		}
+	}
+
+	/**
+	 * Dispatches a single eval worker to a station the caller ({@link LindaHandler}) has already
+	 * reserved a slot on. Unlike {@link #scheduleReadyJobs()} this never requeues on failure: a
+	 * worker that starts after its parent job has finished would write into a tuple space nobody
+	 * reads any more, so on any failure the child job is simply failed and the slot released.
+	 *
+	 * @param childJob           the already-registered child job context
+	 * @param parentJobId        id of the job whose {@code eval()} call spawned this worker
+	 * @param station            the already-reserved station to dispatch to
+	 * @param serializedRunnable the serialized {@code Runnable} to run on the worker
+	 */
+	public void dispatchEval(JobContext childJob, JobId parentJobId, WorkstationContext station,
+							 byte[] serializedRunnable) {
+		JobId childId = childJob.jobId();
+
+		jobRegistry.ready(childId);
+		if (!jobRegistry.scheduled(childId)) {
+			// job reached a terminal state before we could schedule it (e.g. server shutdown) -
+			// nothing left to dispatch, just give the slot back
+			station.releaseSlot();
+			return;
+		}
+
+		jobRegistry.assignedTo(childId, station.hostName());
+
+		try {
+			station.send(new EvalDispatch(childId, parentJobId, childJob.specification(), serializedRunnable));
+		} catch (IOException e) {
+			LOGGER.info("Station socket not reachable for eval dispatch. On station: " + station.hostName());
+
+			station.releaseSlot();
+			jobRegistry.failed(childId, "Station unreachable for eval dispatch");  // this unblocks linda
+			// handler
 		}
 	}
 }

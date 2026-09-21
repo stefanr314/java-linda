@@ -1,6 +1,6 @@
 package rs.ac.bg.etf.kdp.client;
 
-import rs.ac.bg.etf.kdp.common.DirCreator;
+import rs.ac.bg.etf.kdp.common.DirManipulator;
 import rs.ac.bg.etf.kdp.common.FileChunkReceiver;
 
 import java.io.IOException;
@@ -18,7 +18,7 @@ public final class ClientResultsReceiver extends FileChunkReceiver {
 
 		// chunk filename can be logs/stderr.log so just handle that too
 		Path parent = target.getParent();
-		if (parent != null) DirCreator.createDir(parent);
+		if (parent != null) DirManipulator.createDir(parent);
 
 		return target;
 

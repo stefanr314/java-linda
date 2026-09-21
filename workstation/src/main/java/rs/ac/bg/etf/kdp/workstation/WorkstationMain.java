@@ -78,7 +78,7 @@ public final class WorkstationMain implements AutoCloseable {
 		this.javaVersion = getJavaVersionFromRuntime();
 		this.hostname = "ws-" + UUID.randomUUID().toString().substring(0, 16);
 
-		DirCreator.createDir(BASE_PATH);
+		DirManipulator.createDir(BASE_PATH);
 	}
 
 	public static void main(String[] args) {
@@ -104,7 +104,12 @@ public final class WorkstationMain implements AutoCloseable {
 			LOGGER.info(workstation.workstationInfo().toString());
 
 			// required to destroy all processes upon closing of the parent process
-			Runtime.getRuntime().addShutdownHook(new Thread(workstation.jobExecutor::destroyAll));
+			Runtime.getRuntime().addShutdownHook(
+					new Thread(() -> {
+						Runnable destroyAll = workstation.jobExecutor::destroyAll;
+						destroyAll.run();
+					})
+			);
 			workstation.run();
 		} catch (IOException e) {
 			System.err.println("IO exception with message: " + e.getMessage());
@@ -210,6 +215,17 @@ public final class WorkstationMain implements AutoCloseable {
 
 					sink.send(new JobRejected(jobDispatch.jobId(), "All workers occupied."));
 				}
+			} else if (received instanceof EvalDispatch evalDispatch) {
+				// initial message request from server's scheduler for an eval() worker (INPUT FLOW)
+
+				if (jobExecutor.acceptEval(evalDispatch.childJobId(), evalDispatch.spec(),
+						evalDispatch.parentJobId(), evalDispatch.serializedRunnable())) {
+
+					sink.send(new EvalAccepted(evalDispatch.childJobId()));
+				} else {
+
+					sink.send(new JobRejected(evalDispatch.childJobId(), "All workers occupied."));
+				}
 			} else if (received instanceof InputFilesStart inputFilesStart) {
 				// initial introductory message for start of receipt of input files (INPUT FLOW)
 
@@ -217,7 +233,7 @@ public final class WorkstationMain implements AutoCloseable {
 						.resolve("job_" + inputFilesStart.jobId().value());
 
 				try {
-					DirCreator.createDir(jobDir);
+					DirManipulator.createDir(jobDir);
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Internal disk exception. Dir creation failed", diskException);
 
@@ -292,7 +308,7 @@ public final class WorkstationMain implements AutoCloseable {
 				// state of job (done, failed, aborted)
 				Path jobDir = BASE_PATH.resolve("job_" + resultsReceived.jobId().value());
 
-				DirCreator.recursivelyDeleteDirOnPath(jobDir);
+				DirManipulator.recursivelyDeleteDirOnPath(jobDir);
 
 			} else if (received instanceof AbortJobOnStation abortJobOnStation) {
 				// must not do slow work - runs on the thread that answers heartbeat pings
@@ -353,7 +369,7 @@ public final class WorkstationMain implements AutoCloseable {
 
 		Path jobDir = BASE_PATH.resolve("job_" + jobId.value());
 
-		DirCreator.recursivelyDeleteDirOnPath(jobDir);
+		DirManipulator.recursivelyDeleteDirOnPath(jobDir);
 
 		jobExecutor.jobReleaser(jobId);
 		reaction.run();

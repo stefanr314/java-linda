@@ -82,7 +82,7 @@ public class ClientHandler implements ConnectionHandler {
 				);
 
 				Path jobPath = baseDirPath.resolve("job_" + currentJobId.value());
-				DirCreator.recursivelyDeleteDirOnPath(jobPath);
+				DirManipulator.recursivelyDeleteDirOnPath(jobPath);
 			}
 		}
 	}
@@ -122,7 +122,7 @@ public class ClientHandler implements ConnectionHandler {
 				Path inputDir = baseDirPath.resolve("job_" + jobId.value()).resolve("input");
 
 				try {
-					DirCreator.createDir(inputDir);
+					DirManipulator.createDir(inputDir);
 					userContext.send(new ReadyToAcceptInputFiles(jobId));
 				} catch (IOException diskException) {
 
@@ -295,7 +295,7 @@ public class ClientHandler implements ConnectionHandler {
 				// client has picked up the job (results or a terminal failure/abort) - delete the job dir
 				// and drop it from the registry so a later query correctly reports it as unknown.
 				Path jobDir = baseDirPath.resolve("job_" + resultReceived.jobId().value());
-				DirCreator.recursivelyDeleteDirOnPath(jobDir);
+				DirManipulator.recursivelyDeleteDirOnPath(jobDir);
 				jobRegistry.remove(resultReceived.jobId());
 
 			} else if (received instanceof AbortJobCommand abortJobCommand) {
@@ -326,7 +326,7 @@ public class ClientHandler implements ConnectionHandler {
 				}
 
 				Path jobDir = baseDirPath.resolve("job_" + jobId.value());
-				DirCreator.recursivelyDeleteDirOnPath(jobDir);
+				DirManipulator.recursivelyDeleteDirOnPath(jobDir);
 
 				userContext.send(new JobAborted(jobId));
 			} else if (received instanceof JobDecisionCommand decision) {
@@ -355,7 +355,7 @@ public class ClientHandler implements ConnectionHandler {
 
 		// delete job dir and everything inside
 		Path jobDir = baseDirPath.resolve("job_" + jobId.value());
-		DirCreator.recursivelyDeleteDirOnPath(jobDir);
+		DirManipulator.recursivelyDeleteDirOnPath(jobDir);
 
 		// null-ing current job;
 		currentJobId = null;

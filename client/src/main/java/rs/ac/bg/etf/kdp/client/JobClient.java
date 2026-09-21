@@ -434,7 +434,7 @@ public final class JobClient implements AutoCloseable {
 			throw new IOException("Unexpected reply: " + response.getClass().getSimpleName());
 		}
 
-		DirCreator.createDir(targetDir
+		DirManipulator.createDir(targetDir
 				.resolve("job_" + jobId.value()));  // create the results dir (logs dir will be created by rcvr)
 
 		// special receiver for clients

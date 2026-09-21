@@ -22,6 +22,13 @@ public final class JobExecutor {
 
 	private static final Logger LOGGER = Logger.getLogger(JobExecutor.class.getName());
 
+	/**
+	 * Filename the serialized Runnable is written under, inside an eval worker's own job dir.
+	 * Shared between {@link #execute} (writer) and {@link JobPreparator} (reads it back as the
+	 * argument passed to the bootstrap process).
+	 */
+	static final String EVAL_RUNNABLE_FILENAME = "eval-runnable.dat";
+
 	/*
 	This field serves as the counter of accepted jobs. Incremented by only one thread and decremented by multiple.
 	 */
@@ -33,6 +40,15 @@ public final class JobExecutor {
 	value depicting the input files transfer end. In this phase job is not yet started.
 	 */
 	private final Map<JobId, JobSpec> jobSpecification = new ConcurrentHashMap<>();
+
+	/*
+	Eval workers only: the parent job whose tuple space the worker's process must be pointed at, and the
+	serialized Runnable to run, both remembered between accepting the EvalDispatch and the input files transfer
+	ending (at which point the Runnable is written to disk and the process started). Absence of a jobId in these
+	maps means "this is an ordinary job".
+	 */
+	private final Map<JobId, JobId> evalParents = new ConcurrentHashMap<>();
+	private final Map<JobId, byte[]> evalRunnables = new ConcurrentHashMap<>();
 
 	/*
 	Map of running jobs so they can be manipulated on different occasions
@@ -87,7 +103,31 @@ public final class JobExecutor {
 	}
 
 	/**
+	 * Like {@link #accept(JobId, JobSpec)} but for an {@code eval()} worker: additionally
+	 * remembers the parent job the worker's process must be pointed at (so it shares that job's
+	 * tuple space) and the serialized Runnable to run once input files finish arriving.
+	 *
+	 * @return false if this workstation is full and the worker must be refused
+	 */
+	public boolean acceptEval(JobId jobId, JobSpec jobSpec, JobId parentJobId, byte[] serializedRunnable) {
+		Objects.requireNonNull(parentJobId);
+		Objects.requireNonNull(serializedRunnable);
+
+		if (!accept(jobId, jobSpec)) return false;
+
+		evalParents.put(jobId, parentJobId);
+		evalRunnables.put(jobId, serializedRunnable);
+
+		return true;
+	}
+
+	/**
 	 * Method for starting the execution of job upon all input files have been received.
+	 *
+	 * <p>
+	 * For an eval worker this is also where the serialized Runnable (kept in memory since
+	 * {@link #acceptEval}) is written into the job dir, alongside the input files just received.
+	 * </p>
 	 *
 	 * @param jobId      id of job to be executed.
 	 * @param jobDirPath path of job dir - on this path the process will start the job.
@@ -97,6 +137,20 @@ public final class JobExecutor {
 		Objects.requireNonNull(jobDirPath);
 
 		JobSpec jobSpec = jobSpecification.get(jobId);
+
+		byte[] runnable = evalRunnables.get(jobId);
+		if (runnable != null) {
+			try {
+				Files.write(jobDirPath.resolve(EVAL_RUNNABLE_FILENAME), runnable);
+			} catch (IOException writeFailed) {
+				LOGGER.log(Level.WARNING, "Could not write eval runnable for job " + jobId, writeFailed);
+
+				jobReleaser(jobId);
+				reporter.failed(jobId, "Internal error: could not prepare eval worker");
+				return;
+			}
+		}
+
 		// run the job
 		workers.submit(() -> supervise(jobId, jobSpec, jobDirPath, serverHostname, serverPort));
 	}
@@ -112,6 +166,8 @@ public final class JobExecutor {
 		Objects.requireNonNull(jobId);
 
 		jobSpecification.remove(jobId);
+		evalParents.remove(jobId);
+		evalRunnables.remove(jobId);
 
 		acceptedJobs.decrementAndGet();
 	}
@@ -217,6 +273,8 @@ public final class JobExecutor {
 			runningJobs.remove(jobId);
 			jobSpecification.remove(jobId);
 			abortedTransfers.remove(jobId);
+			evalParents.remove(jobId);
+			evalRunnables.remove(jobId);
 
 			// station can receive new jobs now
 			acceptedJobs.decrementAndGet();
@@ -248,8 +306,11 @@ public final class JobExecutor {
 							 String serverHostname, int serverPort) throws IOException {
 
 		// prepare job - may throw if job not properly constructed by client
-		JobPreparator.Prepared prepared = JobPreparator.prepareJob(jobId, jobSpec, jobDirPath, serverHostname,
-				serverPort);
+		JobId evalParentJobId = evalParents.get(jobId);
+		JobPreparator.Prepared prepared = evalParentJobId != null
+				? JobPreparator.prepareEvalJob(jobId, jobSpec, jobDirPath, serverHostname, serverPort,
+						evalParentJobId, EVAL_RUNNABLE_FILENAME)
+				: JobPreparator.prepareJob(jobId, jobSpec, jobDirPath, serverHostname, serverPort);
 
 		// create the process with process builder - and run in separated directory (job specific directory)
 		ProcessBuilder processBuilder =

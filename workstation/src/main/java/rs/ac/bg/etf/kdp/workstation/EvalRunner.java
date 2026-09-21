@@ -1,10 +1,6 @@
 package rs.ac.bg.etf.kdp.workstation;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectStreamClass;
-import java.io.Serializable;
+import java.io.*;
 import java.net.URLClassLoader;
 
 /**
@@ -17,46 +13,38 @@ import java.net.URLClassLoader;
  * ClassNotFoundException}. {@link JobClassLoadingObjectInputStream}
  * overrides it to resolve classes through a {@link URLClassLoader} opened
  * over the job jar instead.
+ *
+ * <p><B>THIS CLASS IS DEPRECATED AND NEVER USED IN ANY ACTUAL CODE. To be deleted in next iterations.</B>
  */
+@Deprecated
 public final class EvalRunner {
 
-    /**
-     * An {@link ObjectInputStream} that resolves classes through a
-     * {@link URLClassLoader} over the job jar, rather than the
-     * workstation's own classpath.
-     */
-    static final class JobClassLoadingObjectInputStream extends ObjectInputStream {
+	// Deprecated
+	public void run(byte[] payload, URLClassLoader jobClassLoader) {
+		throw new UnsupportedOperationException("not yet implemented");
+	}
 
-        private final URLClassLoader jobClassLoader;
+	// not used
+	public interface SerializableRunnable extends Runnable, Serializable {
+	}
 
-        JobClassLoadingObjectInputStream(InputStream in, URLClassLoader jobClassLoader) throws IOException {
-            super(in);
-            this.jobClassLoader = jobClassLoader;
-        }
+	/**
+	 * An {@link ObjectInputStream} that resolves classes through a
+	 * {@link URLClassLoader} over the job jar, rather than the
+	 * workstation's own classpath.
+	 */
+	static final class JobClassLoadingObjectInputStream extends ObjectInputStream {
 
-        @Override
-        protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
-            return Class.forName(desc.getName(), false, jobClassLoader);
-        }
-    }
+		private final URLClassLoader jobClassLoader;
 
-    /**
-     * Deserializes {@code payload} (a {@code Runnable & Serializable}
-     * produced by the job author) through {@code jobClassLoader} and runs
-     * it on the calling thread.
-     *
-     * @param payload        the serialized {@code Runnable}
-     * @param jobClassLoader a class loader opened over the job jar
-     */
-    public void run(byte[] payload, URLClassLoader jobClassLoader) {
-        throw new UnsupportedOperationException("not yet implemented");
-    }
+		JobClassLoadingObjectInputStream(InputStream in, URLClassLoader jobClassLoader) throws IOException {
+			super(in);
+			this.jobClassLoader = jobClassLoader;
+		}
 
-    /**
-     * Marker for the Runnable job authors must supply: it needs to be both
-     * runnable and serializable. Lambdas do not satisfy this in general,
-     * per {@link rs.ac.bg.etf.kdp.common.Linda#eval}.
-     */
-    public interface SerializableRunnable extends Runnable, Serializable {
-    }
+		@Override
+		protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+			return Class.forName(desc.getName(), false, jobClassLoader);
+		}
+	}
 }

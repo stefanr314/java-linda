@@ -35,8 +35,6 @@ public final class LindaProxy implements Linda, AutoCloseable {
 
 	private static final Logger LOGGER = Logger.getLogger(LindaProxy.class.getName());
 
-	private final String host;
-	private final int port;
 	private final JobId jobId;
 
 	private final transient Object callLock = new Object();
@@ -54,8 +52,6 @@ public final class LindaProxy implements Linda, AutoCloseable {
 	 * @param jobId the job whose tuple space this proxy talks to
 	 */
 	public LindaProxy(String host, int port, JobId jobId) {
-		this.host = host;
-		this.port = port;
 		this.jobId = jobId;
 
 		try {
@@ -115,14 +111,18 @@ public final class LindaProxy implements Linda, AutoCloseable {
 		}
 	}
 
+	private static void ackCheck(Object received) {
+		if (received instanceof Failure failure) throw new LindaException(failure.message());
+		if (!(received instanceof Ack)) throw new LindaException("error on communication to server");
+	}
+
 	@Override
 	public void out(String[] tuple) {
 		try {
 			Objects.requireNonNull(tuple);
 
 			Object received = call(new Out(tuple));
-			if (received instanceof Failure failure) throw new LindaException(failure.message());
-			if (!(received instanceof Ack)) throw new LindaException("error on communication to server");
+			ackCheck(received);
 		} catch (IOException | ClassNotFoundException e) {
 			// mask all the exception to unchecked ones, since interface does not declare throwing from methods
 			LOGGER.log(Level.SEVERE, "IO exception occurred on out command.", e);
@@ -201,8 +201,20 @@ public final class LindaProxy implements Linda, AutoCloseable {
 					"properly.");
 		}
 
-		// todo implement me and change the format of Eval message
-//		call(new Eval("name-wetf", thread));
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
+			out.writeObject(thread);
+		} catch (IOException e) {
+			throw new LindaException("could not serialize the eval worker", e);
+		}
+
+		try {
+			Object received = call(new Eval("worker-" + jobId.value(), bytes.toByteArray()));
+			ackCheck(received);
+		} catch (IOException | ClassNotFoundException e) {
+			LOGGER.log(Level.SEVERE, "Exception occurred on eval command.", e);
+			throw new LindaException("Exception on eval command.", e);
+		}
 	}
 
 	@Override

@@ -78,7 +78,7 @@ public class WorkstationHandler implements ConnectionHandler {
 						.resolve("job_" + jobContext.jobId().value())
 						.resolve("output");
 
-				DirCreator.recursivelyDeleteDirOnPath(outputDirPath);
+				DirManipulator.recursivelyDeleteDirOnPath(outputDirPath);
 			}
 
 			registrator.unregister(context);
@@ -107,72 +107,16 @@ public class WorkstationHandler implements ConnectionHandler {
 				LOGGER.info("Workstation: %s has accepted the job: %s. Job is not yet started"
 						.formatted(context.hostName(), jobId));
 
-				JobContext job = getJob(jobId);
-				if (job == null) {
-					context.send(new JobNotPresent(jobId));
-					continue;
-				}
+				sendInputFiles(context, jobId, true);
+			} else if (message instanceof EvalAccepted evalAccepted) {
 
-				JobSpec specification = job.specification();
+				JobId jobId = evalAccepted.childJobId();
+				LOGGER.info("Workstation: %s has accepted the eval worker: %s. Job is not yet started"
+						.formatted(context.hostName(), jobId));
 
-				List<String> filenames = new ArrayList<>(specification.inputFiles());
-				filenames.add(specification.jobFilename());
-
-				Path jobInputDir = baseDirPath
-						.resolve("job_" + jobId.value())
-						.resolve("input");
-
-				context.sendFileChunks(() -> {
-					try {
-						context.send(new InputFilesStart(jobId));
-
-						if (new FileChunkSender(context::send).sendFiles(
-										jobId,
-										filenames,
-										jobInputDir,
-										() -> job.isFileTransmissionStopped() || Thread.currentThread().isInterrupted())
-								.allPresentFilesSent()
-						) {
-
-							context.send(new InputFilesEnd(jobId));
-						} else if (!Thread.currentThread().isInterrupted()) {
-							job.resetFileTransmission();
-						}
-					} catch (FileSystemException serverSideProblem) {
-						// The input files are gone or unreadable on our side. Rescheduling would send the job to
-						// another station only to fail there for the same reason, so fail it once and let the client
-						// resubmit.
-
-						LOGGER.log(Level.SEVERE, "Job input files unusable on the server", serverSideProblem);
-
-						try {
-							context.send(
-									new JobFilesFailure(jobId, "Internal server error.")
-							);
-						} catch (IOException ignored) {
-							// station gone anyway - do nothing
-						}
-
-						if (jobRegistry.failed(jobId, "Input files unreadable on the server")) {
-							context.releaseSlot();
-						}
-
-					} catch (IOException writeException) {
-						// station is gone here probably so try to reschedule the job once again.
-
-						LOGGER.log(
-								Level.WARNING,
-								"IO exception while writing the file chunks. Station is possible gone.",
-								writeException
-						);
-
-						context.releaseSlot();
-						jobRegistry.requeued(jobId);
-
-						// try rescheduling it back
-						scheduler.scheduleReadyJobs();
-					}
-				});
+				// eval workers are never requeued: a worker that starts after its parent finished would
+				// write into a tuple space nobody reads any more (see LindaHandler/Scheduler#dispatchEval)
+				sendInputFiles(context, jobId, false);
 			} else if (message instanceof JobRunning running) {
 
 				LOGGER.info(
@@ -209,7 +153,7 @@ public class WorkstationHandler implements ConnectionHandler {
 						.resolve("output");
 
 				try {
-					DirCreator.createDir(outputDirPath);
+					DirManipulator.createDir(outputDirPath);
 				} catch (IOException diskException) {
 					LOGGER.log(Level.SEVERE, "Disk exception upon creating output dir.", diskException);
 
@@ -236,7 +180,7 @@ public class WorkstationHandler implements ConnectionHandler {
 					LOGGER.log(Level.SEVERE, "Could not store results for " + jobId, diskException);
 
 					fileChunkReceiver.abandon();
-					DirCreator.recursivelyDeleteDirOnPath(outputDir);
+					DirManipulator.recursivelyDeleteDirOnPath(outputDir);
 
 					// results could not be collected properly -> JOB MUST NOT REACH DONE STATE
 					if (jobRegistry.failed(jobId, "Internal server error upon receiving file chunks.")) {
@@ -294,5 +238,91 @@ public class WorkstationHandler implements ConnectionHandler {
 		Optional<JobContext> optionalJob = jobRegistry.find(jobId);
 
 		return optionalJob.orElse(null);
+	}
+
+	/**
+	 * Pushes {@code jobId}'s input files (jar included) from the server's local copy to the
+	 * station that just accepted it. Shared by {@code JobAccepted} (ordinary jobs) and
+	 * {@code EvalAccepted} (eval workers) - both just name a job whose {@link JobSpec} already
+	 * lists everything to send.
+	 *
+	 * @param requeueOnTransferFailure whether a transfer {@link IOException} should requeue the
+	 *                                 job for another station ({@code true}, ordinary jobs) or
+	 *                                 just fail it ({@code false}, eval workers - see
+	 *                                 {@link Scheduler#dispatchEval})
+	 */
+	private void sendInputFiles(WorkstationContext context, JobId jobId, boolean requeueOnTransferFailure)
+			throws IOException {
+		JobContext job = getJob(jobId);
+		if (job == null) {
+			context.send(new JobNotPresent(jobId));
+			return;
+		}
+
+		JobSpec specification = job.specification();
+
+		List<String> filenames = new ArrayList<>(specification.inputFiles());
+		filenames.add(specification.jobFilename());
+
+		Path jobInputDir = baseDirPath
+				.resolve("job_" + jobId.value())
+				.resolve("input");
+
+		context.sendFileChunks(() -> {
+			try {
+				context.send(new InputFilesStart(jobId));
+
+				if (new FileChunkSender(context::send).sendFiles(
+								jobId,
+								filenames,
+								jobInputDir,
+								() -> job.isFileTransmissionStopped() || Thread.currentThread().isInterrupted())
+						.allPresentFilesSent()
+				) {
+
+					context.send(new InputFilesEnd(jobId));
+				} else if (!Thread.currentThread().isInterrupted()) {
+					job.resetFileTransmission();
+				}
+			} catch (FileSystemException serverSideProblem) {
+				// The input files are gone or unreadable on our side. Rescheduling would send the job to
+				// another station only to fail there for the same reason, so fail it once and let the client
+				// resubmit.
+
+				LOGGER.log(Level.SEVERE, "Job input files unusable on the server", serverSideProblem);
+
+				try {
+					context.send(
+							new JobFilesFailure(jobId, "Internal server error.")
+					);
+				} catch (IOException ignored) {
+					// station gone anyway - do nothing
+				}
+
+				if (jobRegistry.failed(jobId, "Input files unreadable on the server")) {
+					context.releaseSlot();
+				}
+
+			} catch (IOException writeException) {
+				// station is gone here probably so try to reschedule the job once again.
+
+				LOGGER.log(
+						Level.WARNING,
+						"IO exception while writing the file chunks. Station is possible gone.",
+						writeException
+				);
+
+				context.releaseSlot();
+
+				if (requeueOnTransferFailure) {
+					jobRegistry.requeued(jobId);
+
+					// try rescheduling it back
+					scheduler.scheduleReadyJobs();
+				} else {
+					jobRegistry.failed(jobId, "IO exception while transferring input files for eval worker");
+				}
+			}
+		});
 	}
 }

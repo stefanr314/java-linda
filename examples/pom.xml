@@ -20,6 +20,7 @@
         <module>primes</module>
         <module>hello-wrld</module>
         <module>demo-ineff-primes</module>
+        <module>prime-nums-generation-bag-of-tasks</module>
     </modules>
 
 

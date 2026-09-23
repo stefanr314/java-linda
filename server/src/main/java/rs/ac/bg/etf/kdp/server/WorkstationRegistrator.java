@@ -22,7 +22,7 @@ import java.util.logging.Logger;
  * </p>
  *
  * <p>Stateless apart from its collaborators, so one instance is shared by every handler thread. Relies on stack
- * confinement mostly so no synchronization needed. Rest of synchronization is delegated to the registry.</p>
+ * confinement mostly so no synchronization needed. Rest of synchronization is delegated to the underlying structures.
  */
 public final class WorkstationRegistrator {
 
@@ -101,8 +101,6 @@ public final class WorkstationRegistrator {
 	 * </p>
 	 */
 	public void unregister(WorkstationContext context) {
-		cleanUpAfter(Objects.requireNonNull(context));
-
 		if (registry.unregister(context)) {
 			LOGGER.log(Level.INFO, "Unregistered workstation {0}", context.hostName());
 		} else {
@@ -110,8 +108,14 @@ public final class WorkstationRegistrator {
 					"Workstation {0} had already been replaced by a newer registration",
 					context.hostName());
 		}
+
+		cleanUpAfter(Objects.requireNonNull(context));
 	}
 
+	/*
+	Method that cleans after the unregistered station; if some scheduled jobs where present just reschedule them
+	again, if some running jobs present delegate to user if present or else terminate.
+	 */
 	private void cleanUpAfter(WorkstationContext station) {
 		for (JobContext job : jobRegistry.activeJobsOn(station.hostName())) {
 
@@ -127,6 +131,7 @@ public final class WorkstationRegistrator {
 			job.removeAssignedWorkstation(station.hostName()); // clean up the job context - since this station is gone
 			decisionBroker.askAboutLostStation(job, station.hostName());
 		}
+
 		scheduler.scheduleReadyJobs();
 	}
 }

@@ -1,5 +1,6 @@
 package rs.ac.bg.etf.kdp.workstation;
 
+import rs.ac.bg.etf.kdp.common.DirManipulator;
 import rs.ac.bg.etf.kdp.common.FileChunkSender;
 import rs.ac.bg.etf.kdp.common.JobId;
 import rs.ac.bg.etf.kdp.common.JobSpec;
@@ -11,6 +12,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -20,15 +22,14 @@ import java.util.logging.Logger;
 
 public final class JobExecutor {
 
-	private static final Logger LOGGER = Logger.getLogger(JobExecutor.class.getName());
-
 	/**
 	 * Filename the serialized Runnable is written under, inside an eval worker's own job dir.
 	 * Shared between {@link #execute} (writer) and {@link JobPreparator} (reads it back as the
 	 * argument passed to the bootstrap process).
 	 */
 	static final String EVAL_RUNNABLE_FILENAME = "eval-runnable.dat";
-
+	private static final Path BASE_PATH = Paths.get(System.getProperty("java.io.tmpdir"), "workstation_jobs");
+	private static final Logger LOGGER = Logger.getLogger(JobExecutor.class.getName());
 	/*
 	This field serves as the counter of accepted jobs. Incremented by only one thread and decremented by multiple.
 	 */
@@ -93,12 +94,13 @@ public final class JobExecutor {
 		// check whether station is truly free to run the job - TS since this code never gets run by multiple threads
 		// concurrently; so the returned atomic integer can only be eventually lesser than what we have read with get
 		if (acceptedJobs.get() >= parallelismCapacity) return false;
-		acceptedJobs.incrementAndGet();
 
-		// save the jobId and jobSpec somewhere
-		jobSpecification.put(jobId, jobSpec);
+		// duplicate - current implementation should prevent this branch being triggered (but in next implementations
+		// u neve know
+		if (jobSpecification.putIfAbsent(jobId, jobSpec) != null) return false;
 
-		// just return true and await for all input chunks to be received
+		acceptedJobs.getAndUpdate(accepted -> accepted >= parallelismCapacity ? accepted : accepted + 1);
+
 		return true;
 	}
 
@@ -121,6 +123,10 @@ public final class JobExecutor {
 		return true;
 	}
 
+	public JobSpec presentSpecification(JobId jobId) {
+		return jobSpecification.get(jobId);
+	}
+
 	/**
 	 * Method for starting the execution of job upon all input files have been received.
 	 *
@@ -132,11 +138,10 @@ public final class JobExecutor {
 	 * @param jobId      id of job to be executed.
 	 * @param jobDirPath path of job dir - on this path the process will start the job.
 	 */
-	public void execute(JobId jobId, Path jobDirPath, String serverHostname, int serverPort) {
+	public void execute(JobId jobId, JobSpec spec, Path jobDirPath, String serverHostname, int serverPort) {
 		Objects.requireNonNull(jobId);
+		Objects.requireNonNull(spec);
 		Objects.requireNonNull(jobDirPath);
-
-		JobSpec jobSpec = jobSpecification.get(jobId);
 
 		byte[] runnable = evalRunnables.get(jobId);
 		if (runnable != null) {
@@ -152,13 +157,15 @@ public final class JobExecutor {
 		}
 
 		// run the job
-		workers.submit(() -> supervise(jobId, jobSpec, jobDirPath, serverHostname, serverPort));
+		workers.submit(() -> supervise(jobId, spec, jobDirPath, serverHostname, serverPort));
 	}
 
 	/**
 	 * Release all occupied resources upon initial breakage of files (prior to execution of job i.e. in input file
 	 * transfer suffered malfunction).
 	 * <p>This method must be called <em>on every failure path possible upon receipt of input files.</p>
+	 *
+	 * <p><b>Whoever calls this method must notify the server that a job was rejected.</b></p>
 	 *
 	 * @param jobId id of job that must be released/cleaned after.
 	 */
@@ -187,6 +194,15 @@ public final class JobExecutor {
 	 */
 	public void destroyAll() {
 		runningJobs.values().forEach(Process::destroyForcibly);
+	}
+
+	public void deleteDirsOfRunningJobs() {
+		for (JobId jobId : runningJobs.keySet()) {
+			DirManipulator.recursivelyDeleteDirOnPath(BASE_PATH.resolve("job_" + jobId.value()));
+		}
+
+		jobSpecification.clear();
+		runningJobs.clear();
 	}
 
 	/**
@@ -238,15 +254,12 @@ public final class JobExecutor {
 						   String serverHostname, int serverPort) {
 		RunningJob runningJob;
 		try {
-			// delegate the creation of job
 			runningJob = start(jobId, jobSpec, jobDirPath, serverHostname, serverPort);
 
 			Process process = runningJob.process();
 
-			// add to the map
 			runningJobs.put(jobId, process);
 
-			// report the new status to ws-main
 			reporter.running(jobId);
 
 			int exitCode = process.waitFor();
@@ -276,7 +289,6 @@ public final class JobExecutor {
 			evalParents.remove(jobId);
 			evalRunnables.remove(jobId);
 
-			// station can receive new jobs now
 			acceptedJobs.decrementAndGet();
 		}
 	}
@@ -309,7 +321,7 @@ public final class JobExecutor {
 		JobId evalParentJobId = evalParents.get(jobId);
 		JobPreparator.Prepared prepared = evalParentJobId != null
 				? JobPreparator.prepareEvalJob(jobId, jobSpec, jobDirPath, serverHostname, serverPort,
-						evalParentJobId, EVAL_RUNNABLE_FILENAME)
+				evalParentJobId, EVAL_RUNNABLE_FILENAME)
 				: JobPreparator.prepareJob(jobId, jobSpec, jobDirPath, serverHostname, serverPort);
 
 		// create the process with process builder - and run in separated directory (job specific directory)

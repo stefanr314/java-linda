@@ -46,12 +46,4 @@ public final class PathUtil {
 
 		return Path.of("").toAbsolutePath();
 	}
-
-	private static boolean dirContainsLindaDir(Path dir) {
-		return Files.exists(dir.resolve("linda-client"));
-	}
-
-	private static boolean dirContainsCommonModule(Path dir) {
-		return Files.exists(dir.resolve("common"));
-	}
 }

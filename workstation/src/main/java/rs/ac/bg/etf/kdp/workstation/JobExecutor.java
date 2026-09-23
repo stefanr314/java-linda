@@ -180,7 +180,7 @@ public final class JobExecutor {
 	}
 
 	/**
-	 * Called from the control thread on AbortJob.Note WIP.
+	 * Called from the control thread on AbortJob.
 	 *
 	 * @param jobId id of aborted job
 	 */

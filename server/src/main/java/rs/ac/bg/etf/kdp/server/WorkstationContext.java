@@ -1,20 +1,15 @@
 package rs.ac.bg.etf.kdp.server;
 
-import rs.ac.bg.etf.kdp.common.FileChunkSender;
 import rs.ac.bg.etf.kdp.common.WorkstationInfo;
-import rs.ac.bg.etf.kdp.common.protocol.InputFilesEnd;
-import rs.ac.bg.etf.kdp.common.protocol.InputFilesStart;
-import rs.ac.bg.etf.kdp.common.protocol.JobFilesFailure;
 
 import java.io.IOException;
-import java.nio.file.FileSystemException;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.logging.Level;
 
 public final class WorkstationContext {
 	private final WorkstationInfo info;
@@ -82,13 +77,18 @@ public final class WorkstationContext {
 	 * @param message message to sent to object channel.
 	 */
 	public void sendAsync(Object message) {
-		asyncWriter.execute(() -> {
-			try {
-				send(message);
-			} catch (IOException stationDead) {
-				disconnect();  // broken socket -> gone station
-			}
-		});
+		try {
+			asyncWriter.execute(() -> {
+				try {
+					send(message);
+				} catch (IOException stationDead) {
+					disconnect();  // broken socket -> gone station
+				}
+			});
+		} catch (RejectedExecutionException e) {
+			// station is gone; executor is shutdown
+		}
+
 	}
 
 	public void sendFileChunks(Runnable chunkSender) {

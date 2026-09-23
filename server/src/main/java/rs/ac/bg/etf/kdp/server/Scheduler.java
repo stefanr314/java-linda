@@ -62,8 +62,15 @@ public final class Scheduler {
 			jobRegistry.assignedTo(job.jobId(), station.hostName());
 
 			try {
-				station.send(new JobDispatch(job.jobId(), job.specification())); // the socket might be
-				// closed at this moment
+				station.send(new JobDispatch(job.jobId(), job.specification()));
+
+				// if send proceeds to the other side, check is required to see if station is still alive
+				if (workstationRegistry.find(station.hostName()).orElse(null) != station) {
+					// station is gone and will not answer; job is in scheduled state so it's required to move it
+					// back to ready
+
+					jobRegistry.requeued(job.jobId());
+				}
 			} catch (IOException e) {
 				LOGGER.info("Station socket not reachable. On station: " + station.hostName());
 
@@ -77,7 +84,7 @@ public final class Scheduler {
 	 * Dispatches a single eval worker to a station the caller ({@link LindaHandler}) has already
 	 * reserved a slot on. Unlike {@link #scheduleReadyJobs()} this never requeues on failure: a
 	 * worker that starts after its parent job has finished would write into a tuple space nobody
-	 * reads any more, so on any failure the child job is simply failed and the slot released.
+	 * reads anymore, so on any failure the child job is simply failed and the slot released.
 	 *
 	 * @param childJob           the already-registered child job context
 	 * @param parentJobId        id of the job whose {@code eval()} call spawned this worker

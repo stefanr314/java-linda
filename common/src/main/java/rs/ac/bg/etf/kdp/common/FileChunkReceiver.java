@@ -22,7 +22,7 @@ public abstract class FileChunkReceiver {
 	Hash map is enough here since no more than one thread will call this objects method for writing to files. IF THIS
 	 EVER CHANGES THE SYNCHRONIZATION IS REQUIRED.
 	 */
-	private final Map<Path, OutputStream> openFileDescriptorsMap = new HashMap<>(); // todo
+	private final Map<Path, OutputStream> openFileDescriptorsMap = new HashMap<>();
 
 	/**
 	 * Next expected sequence number per file. TCP already guarantees order on one connection, so
@@ -35,7 +35,11 @@ public abstract class FileChunkReceiver {
 	private static OutputStream apply(Path newFilePath) {
 		OutputStream outputStream;
 		try {
-			outputStream = Files.newOutputStream(newFilePath, StandardOpenOption.CREATE_NEW);
+			outputStream = Files.newOutputStream(
+					newFilePath,
+					StandardOpenOption.CREATE,
+					StandardOpenOption.TRUNCATE_EXISTING,
+					StandardOpenOption.WRITE);
 		} catch (IOException e) {
 			LOGGER.severe("Failed to open the stream towards the file. Check the file path.");
 			throw new UncheckedIOException(e);

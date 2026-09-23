@@ -40,8 +40,6 @@ public final class WorkstationMain implements AutoCloseable {
 
 	private final ExecutorService workers;
 
-	private final JobReporter reporter;
-
 	private final JobExecutor jobExecutor;
 
 	private final FileChunkReceiver fileReceiver = new ClientInputFilesReceiver();
@@ -67,7 +65,7 @@ public final class WorkstationMain implements AutoCloseable {
 				(runner) -> new Thread(runner, "worker-")
 		);
 
-		this.reporter = new ReporterMessageSink(sink);
+		JobReporter reporter = new ReporterMessageSink(sink);
 
 		this.serverHostname = serverHostname;
 		this.serverPort = serverPort;
@@ -226,6 +224,15 @@ public final class WorkstationMain implements AutoCloseable {
 
 					sink.send(new JobRejected(evalDispatch.childJobId(), "All workers occupied."));
 				}
+			} else if (received instanceof JobAlreadyTerminated alreadyTerminated) {
+
+				LOGGER.log(
+						Level.WARNING,
+						"Job already terminated. Job id: "
+								+ alreadyTerminated.jobId().value()
+				);
+
+				jobExecutor.jobReleaser(alreadyTerminated.jobId());
 			} else if (received instanceof InputFilesStart inputFilesStart) {
 				// initial introductory message for start of receipt of input files (INPUT FLOW)
 
@@ -233,6 +240,9 @@ public final class WorkstationMain implements AutoCloseable {
 						.resolve("job_" + inputFilesStart.jobId().value());
 
 				try {
+					DirManipulator.recursivelyDeleteDirOnPath(jobDir);  // note: delete the left overs from dead
+					// station on same machine
+
 					DirManipulator.createDir(jobDir);
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Internal disk exception. Dir creation failed", diskException);
@@ -243,6 +253,12 @@ public final class WorkstationMain implements AutoCloseable {
 				}
 			} else if (received instanceof FileChunk chunk) {
 				// path for receiving input files in chunks (INPUT FLOW)
+
+				// note: don't receive leftover chunks
+				if ((jobExecutor.presentSpecification(chunk.jobId())) == null) {
+					LOGGER.fine("Late chunk for a released job: " + chunk.jobId());
+					continue;
+				}
 
 				Path jobDir = BASE_PATH.resolve("job_" + chunk.jobId().value());
 
@@ -283,11 +299,19 @@ public final class WorkstationMain implements AutoCloseable {
 				}
 			} else if (received instanceof InputFilesEnd filesEnd) {
 
+				JobSpec jobSpec = jobExecutor.presentSpecification(filesEnd.jobId());
+
+				if (jobSpec == null) {
+					// leftover chunk
+					LOGGER.fine("Late InputFilesEnd for a released job: " + filesEnd.jobId());
+					continue;
+				}
+
 				LOGGER.info("All files received for job: " + filesEnd.jobId());
 
 				Path jobDir = BASE_PATH.resolve("job_" + filesEnd.jobId().value());
 
-				jobExecutor.execute(filesEnd.jobId(), jobDir, serverHostname, serverPort);
+				jobExecutor.execute(filesEnd.jobId(), jobSpec, jobDir, serverHostname, serverPort);
 
 			} else if (received instanceof JobFilesFailure filesFailure) {
 
@@ -316,14 +340,14 @@ public final class WorkstationMain implements AutoCloseable {
 				jobExecutor.stopResultTransfer(abortJobOnStation.jobId());
 				jobExecutor.abort(abortJobOnStation.jobId());
 			} else if (received instanceof JobNotPresent jobNotPresent) {
-				// job was not found on server (INPUT FLOW)
 
-				// fixme do something ??
 				LOGGER.log(
 						Level.WARNING,
 						"Job not recognized by server. Job id: "
 								+ jobNotPresent.jobId().value()
 				);
+
+				jobExecutor.jobReleaser(jobNotPresent.jobId());
 			} else if (received instanceof Bye ignored) {
 				LOGGER.info("Server sent bye message.");
 

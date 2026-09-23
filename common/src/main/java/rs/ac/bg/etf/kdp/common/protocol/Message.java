@@ -13,11 +13,5 @@ import java.io.Serializable;
  * and a {@code String[]} payload cross the wire.
  */
 public sealed interface Message extends Serializable
-		permits AbortJobCommand, AbortJobOnStation, AbortResultTransfer, Ack, BoolReply, Bye, Eval, EvalAccepted,
-		EvalDispatch, Failure, FileChunk,
-		Hello, In, Inp, InputFilesEnd, InputFilesStart, JobAborted, JobAccepted, JobDecisionCommand, JobDispatch,
-		JobFailed, JobFilesFailure, JobFinished, JobJarEnd, JobJarStart, JobNotPresent, JobNotTerminated, JobQueued,
-		JobRegistered, JobRejected, JobResultQuery, JobRunning, JobStatusQuery, JobStatusResponse, JobSubmitCommand,
-		LindaRegistered, Out, OutputFilesEnd, OutputFilesStart, Ping, Pong, Rd, Rdp, ReadyToAcceptInputFiles,
-		Registered, Reply, ResultsReceived, TupleReply {
+		permits AbortJobCommand, AbortJobOnStation, AbortResultTransfer, Ack, BoolReply, Bye, Eval, EvalAccepted, EvalDispatch, Failure, FileChunk, Hello, In, Inp, InputFilesEnd, InputFilesStart, JobAborted, JobAccepted, JobAlreadyTerminated, JobDecisionCommand, JobDispatch, JobFailed, JobFilesFailure, JobFinished, JobJarEnd, JobJarStart, JobNotPresent, JobNotTerminated, JobQueued, JobRegistered, JobRejected, JobResultQuery, JobRunning, JobStatusQuery, JobStatusResponse, JobSubmitCommand, LindaRegistered, Out, OutputFilesEnd, OutputFilesStart, Ping, Pong, Rd, Rdp, ReadyToAcceptInputFiles, Registered, Reply, ResultsReceived, TupleReply {
 }

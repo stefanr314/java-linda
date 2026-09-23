@@ -247,7 +247,7 @@ public final class WorkstationGui {
 		started.run(); // reacting on closing performed outside
 	}
 
-	// EDT-confined: only called via invokeLater from runWorkstation().
+	// EDT-confined: only called via invokeLater from runWorkstation()
 	private void onWorkstationStarted(WorkstationMain started) {
 		nameLabel.setText(started.workstationInfo().hostName());
 		osLabel.setText(started.workstationInfo().osName());
@@ -290,10 +290,15 @@ public final class WorkstationGui {
 
 		Thread closer = new Thread(() -> {
 			WorkstationMain current = workstation;
+
+			// it's required to destroy all jobs when station is closed, and to delete running dirs
+			// perhaps the same station will be back running the same job
 			workstation = null;
 
 			if (current != null) {
 				try {
+					current.jobExecutor().destroyAll();
+					current.jobExecutor().deleteDirsOfRunningJobs();
 					current.close();
 				} catch (IOException ignored) {
 					// already logged internally by WorkstationMain

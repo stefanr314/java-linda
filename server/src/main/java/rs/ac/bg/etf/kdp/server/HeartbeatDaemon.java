@@ -32,7 +32,14 @@ public class HeartbeatDaemon implements AutoCloseable {
 				t.setDaemon(true);
 				return t;
 			});
-	private final Runnable runner = this::sweeper;
+	private final Runnable runner = () -> {
+		try {
+			this.sweeper();
+
+		} catch (RuntimeException e) {
+			LOGGER.log(Level.SEVERE, "Heartbeat sweep failed", e);
+		}
+	};
 
 	public HeartbeatDaemon(HeartbeatPolicy policy, WorkstationRegistry workstationRegistry) {
 		this.intervalMillis = policy.intervalMillis();

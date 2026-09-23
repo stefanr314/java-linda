@@ -115,7 +115,7 @@ public class WorkstationHandler implements ConnectionHandler {
 						.formatted(context.hostName(), jobId));
 
 				// eval workers are never requeued: a worker that starts after its parent finished would
-				// write into a tuple space nobody reads any more (see LindaHandler/Scheduler#dispatchEval)
+				// write into a tuple space nobody reads anymore (see LindaHandler/Scheduler#dispatchEval)
 				sendInputFiles(context, jobId, false);
 			} else if (message instanceof JobRunning running) {
 
@@ -256,6 +256,12 @@ public class WorkstationHandler implements ConnectionHandler {
 		JobContext job = getJob(jobId);
 		if (job == null) {
 			context.send(new JobNotPresent(jobId));
+			return;
+		}
+
+		if (job.status() != JobStatus.SCHEDULED) {
+			// before sending the files it's required to check the internal state of job;
+			context.send(new JobAlreadyTerminated(job.jobId()));
 			return;
 		}
 

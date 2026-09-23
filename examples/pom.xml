@@ -22,6 +22,7 @@
         <module>demo-ineff-primes</module>
         <module>prime-nums-generation-bag-of-tasks</module>
         <module>mandelbrot</module>
+        <module>odd-person-wins</module>
     </modules>
 
 

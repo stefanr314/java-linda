@@ -200,9 +200,7 @@ public class WorkstationHandler implements ConnectionHandler {
 
 					return returnMessage.toString();
 				});
-
-				// note: all files sent by station will be received - TCP guarantees
-
+				
 				// send the ack signal to station
 				context.send(new ResultsReceived(filesEnd.jobId()));
 

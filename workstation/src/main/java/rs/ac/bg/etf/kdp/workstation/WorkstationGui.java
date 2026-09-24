@@ -81,7 +81,10 @@ public final class WorkstationGui {
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			WorkstationMain workstation = gui.workstation;
 
-			if (workstation != null) workstation.jobExecutor().destroyAll();
+			if (workstation != null) {
+				workstation.jobExecutor().destroyAllAndAwait(3000);
+				workstation.jobExecutor().deleteDirsOfRunningJobs();
+			}
 		}, "workstation-shutdown"));
 		SwingUtilities.invokeLater(gui::show);
 	}
@@ -297,7 +300,7 @@ public final class WorkstationGui {
 
 			if (current != null) {
 				try {
-					current.jobExecutor().destroyAll();
+					current.jobExecutor().destroyAllAndAwait(3000);
 					current.jobExecutor().deleteDirsOfRunningJobs();
 					current.close();
 				} catch (IOException ignored) {

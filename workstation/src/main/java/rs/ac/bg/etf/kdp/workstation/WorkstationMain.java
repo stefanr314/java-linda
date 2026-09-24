@@ -104,9 +104,8 @@ public final class WorkstationMain implements AutoCloseable {
 			// required to destroy all processes upon closing of the parent process
 			Runtime.getRuntime().addShutdownHook(
 					new Thread(() -> {
-						Runnable destroyAll = workstation.jobExecutor::destroyAll;
+						workstation.jobExecutor.destroyAllAndAwait(3000);
 						workstation.jobExecutor.deleteDirsOfRunningJobs();
-						destroyAll.run();
 					})
 			);
 			workstation.run();

@@ -16,6 +16,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -33,15 +34,13 @@ public final class JobExecutor {
 	/*
 	This field serves as the counter of accepted jobs. Incremented by only one thread and decremented by multiple.
 	 */
-	private final AtomicInteger acceptedJobs = new AtomicInteger();
+	private final AtomicInteger acceptedJobs = new AtomicInteger(0);
 	private final int parallelismCapacity;
-
 	/*
 	Map for remembering the job specification between the initial call for job dispatch and receiving the sentinel
 	value depicting the input files transfer end. In this phase job is not yet started.
 	 */
 	private final Map<JobId, JobSpec> jobSpecification = new ConcurrentHashMap<>();
-
 	/*
 	Eval workers only: the parent job whose tuple space the worker's process must be pointed at, and the
 	serialized Runnable to run, both remembered between accepting the EvalDispatch and the input files transfer
@@ -50,21 +49,19 @@ public final class JobExecutor {
 	 */
 	private final Map<JobId, JobId> evalParents = new ConcurrentHashMap<>();
 	private final Map<JobId, byte[]> evalRunnables = new ConcurrentHashMap<>();
-
 	/*
 	Map of running jobs so they can be manipulated on different occasions
 	 */
 	private final Map<JobId, Process> runningJobs = new ConcurrentHashMap<>();
-
 	/**
 	 * Jobs whose result transfer the server told us to stop. A set rather than a flag on a shared
 	 * object, because the control thread learns about this while the supervising thread is midway
 	 * through streaming, and the two only need to agree on membership.
 	 */
 	private final Set<JobId> abortedTransfers = ConcurrentHashMap.newKeySet();
-
 	private final JobReporter reporter;
 	private final ExecutorService workers;
+	private volatile boolean shuttingDown = false;
 
 
 	public JobExecutor(int parallelismCapacity, JobReporter reporter, ExecutorService workers) {
@@ -154,7 +151,7 @@ public final class JobExecutor {
 				LOGGER.log(Level.WARNING, "Could not write eval runnable for job " + jobId, writeFailed);
 
 				jobReleaser(jobId);
-				reporter.failed(jobId, "Internal error: could not prepare eval worker");
+				reportFailure(jobId, "Internal error: could not prepare eval worker");
 				return;
 			}
 		}
@@ -179,7 +176,7 @@ public final class JobExecutor {
 		evalParents.remove(jobId);
 		evalRunnables.remove(jobId);
 
-		acceptedJobs.decrementAndGet();
+		acceptedJobs.updateAndGet(counter -> Math.max(counter - 1, 0));
 	}
 
 	/**
@@ -197,6 +194,20 @@ public final class JobExecutor {
 	 */
 	public void destroyAll() {
 		runningJobs.values().forEach(Process::destroyForcibly);
+	}
+
+	public void destroyAllAndAwait(long millis) {
+		shuttingDown = true;
+		runningJobs.values().forEach(Process::destroyForcibly);
+
+		for (Process p : runningJobs.values()) {
+			try {
+				p.waitFor(millis, TimeUnit.MILLISECONDS);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return;
+			}
+		}
 	}
 
 	public void deleteDirsOfRunningJobs() {
@@ -233,6 +244,14 @@ public final class JobExecutor {
 
 	private boolean transferStopped(JobId jobId) {
 		return abortedTransfers.contains(jobId);
+	}
+
+	private void reportFailure(JobId jobId, String reason) {
+		if (shuttingDown) {
+			LOGGER.info("Station is shutting down; leaving job " + jobId + " to the server");
+			return;
+		}
+		reporter.failed(jobId, reason);
 	}
 
 	/**
@@ -272,21 +291,21 @@ public final class JobExecutor {
 			runningJob.stdout().join(2000);
 
 			if (exitCode == 0) deliverResults(jobId, jobSpec.outputFiles(), jobDirPath);
-			else reporter.failed(jobId, "exit code " + exitCode);  // note: add the stderr to message
+			else reportFailure(jobId, "exit code " + exitCode);  // note: add the stderr to message
 		} catch (IOException failedToStart) {
-			reporter.failed(jobId, failedToStart.getMessage());
+			reportFailure(jobId, failedToStart.getMessage());
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
-			reporter.failed(jobId, "Interrupted");
+			reportFailure(jobId, "Interrupted");
 		} catch (JarMisconfiguredException manifestMissing) {
 			LOGGER.log(Level.FINE, "Manifest missing for job: " + jobId.value());
-			reporter.failed(jobId, "Internal error: " + manifestMissing.getMessage());
+			reportFailure(jobId, "Internal error: " + manifestMissing.getMessage());
 		} catch (JobCommandMismatch commandMismatch) {
 			LOGGER.log(Level.FINE, "Manifest missing for job: " + jobId.value());
-			reporter.failed(jobId, commandMismatch.getMessage());
+			reportFailure(jobId, commandMismatch.getMessage());
 		} catch (RuntimeException unexpected) {
 			LOGGER.log(Level.WARNING, "Unexpected failure supervising " + jobId, unexpected);
-			reporter.failed(jobId, "Internal error: " + unexpected);
+			reportFailure(jobId, "Internal error: " + unexpected);
 		} finally {
 			runningJobs.remove(jobId);
 			jobSpecification.remove(jobId);
@@ -294,7 +313,7 @@ public final class JobExecutor {
 			evalParents.remove(jobId);
 			evalRunnables.remove(jobId);
 
-			acceptedJobs.decrementAndGet();
+			acceptedJobs.updateAndGet(counter -> Math.max(counter - 1, 0));
 		}
 	}
 

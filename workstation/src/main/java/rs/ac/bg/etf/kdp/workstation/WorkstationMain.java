@@ -211,7 +211,7 @@ public final class WorkstationMain implements AutoCloseable {
 					sink.send(new JobAccepted(jobDispatch.jobId()));
 				} else {
 
-					sink.send(new JobRejected(jobDispatch.jobId(), "All workers occupied."));
+					sink.send(new JobRejected(jobDispatch.jobId(), "All workers occupied.", true));
 				}
 			} else if (received instanceof EvalDispatch evalDispatch) {
 				// initial message request from server's scheduler for an eval() worker (INPUT FLOW)
@@ -222,7 +222,7 @@ public final class WorkstationMain implements AutoCloseable {
 					sink.send(new EvalAccepted(evalDispatch.childJobId()));
 				} else {
 
-					sink.send(new JobRejected(evalDispatch.childJobId(), "All workers occupied."));
+					sink.send(new JobRejected(evalDispatch.childJobId(), "All workers occupied.", true));
 				}
 			} else if (received instanceof JobAlreadyTerminated alreadyTerminated) {
 
@@ -247,7 +247,7 @@ public final class WorkstationMain implements AutoCloseable {
 				} catch (IOException diskException) {
 					LOGGER.log(Level.WARNING, "Internal disk exception. Dir creation failed", diskException);
 
-					sink.send(new JobRejected(inputFilesStart.jobId(), "Internal disk error."));
+					sink.send(new JobRejected(inputFilesStart.jobId(), "Internal disk error.", false));
 
 					jobExecutor.jobReleaser(inputFilesStart.jobId());
 				}
@@ -283,7 +283,8 @@ public final class WorkstationMain implements AutoCloseable {
 											new JobRejected(
 													chunk.jobId(),
 													"Error upon receiving job input files. " +
-															"Input files have not been received."
+															"Input files have not been received.",
+													false
 											)
 									);
 								} catch (IOException e) {

@@ -126,7 +126,6 @@ public class WorkstationHandler implements ConnectionHandler {
 				jobRegistry.running(running.jobId());
 			} else if (message instanceof JobRejected rejected) {
 
-				//signal writer to stop writing
 				JobContext job = getJob(rejected.jobId());
 				if (job == null) {
 					context.send(new JobNotPresent(rejected.jobId()));
@@ -135,15 +134,15 @@ public class WorkstationHandler implements ConnectionHandler {
 
 				job.stopFileTransmission();
 
-				// station rejected the job - cleanup must be conducted
-				// release the slot of this station
+				// don't record if capacity demand not met on station; perhaps it will get free soon
+				if (!rejected.capacity()) {
+					job.recordRejection(context.hostName());
+				}
+
 				context.releaseSlot();
 
-				// change the status of job (was scheduled) and put it back to the ready
-				// note: is there a way to not schedule it back to same station...
 				jobRegistry.requeued(rejected.jobId());
 
-				// try rescheduling it back
 				scheduler.scheduleReadyJobs();
 			} else if (message instanceof JobFinished finished) {
 
@@ -200,7 +199,7 @@ public class WorkstationHandler implements ConnectionHandler {
 
 					return returnMessage.toString();
 				});
-				
+
 				// send the ack signal to station
 				context.send(new ResultsReceived(filesEnd.jobId()));
 

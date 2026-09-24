@@ -122,7 +122,7 @@ public final class WorkstationRegistrator {
 			// A job the station never got to start goes back in the queue; the client asked for it
 			// and nothing about it has run yet. This might happen either when the station gracefully shutdowns in
 			// middle of transfer or when it's just gone until cleaned by heartbeat.
-			if (job.status() == JobStatus.SCHEDULED) {
+			if (job.status() == JobStatus.SCHEDULED || job.status() == JobStatus.RUNNING) {
 				jobRegistry.requeued(job.jobId());
 				continue;
 			}

@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Everything the server holds for a single job: its {@link TupleSpace},
@@ -21,8 +21,6 @@ import java.util.logging.Logger;
  * instance.
  */
 public final class JobContext {
-
-	private static final Logger LOGGER = Logger.getLogger(JobContext.class.getName());
 
 	private final JobId jobId;
 
@@ -39,6 +37,8 @@ public final class JobContext {
 
 	private final Set<String> assignedWorkstations = ConcurrentHashMap.newKeySet();
 
+	private final Set<String> rejectedByStations = ConcurrentHashMap.newKeySet();
+
 	private final JobSpec spec;
 
 	// required to save if job gets delegated from broken station to working one
@@ -47,14 +47,12 @@ public final class JobContext {
 	// job counter received by server - serves no purpose, just required by specification of project
 	private final long jobNumber;
 	private final Instant arrivedAt = Instant.now();
+	private final AtomicInteger rescheduledTimes = new AtomicInteger(0);
 
 	private volatile UserContext userContext;
 	private String failureReason;
-
 	private volatile Instant completedAt;
-
 	private volatile JobStatus status = JobStatus.RECEIVING;  // NOTE: volatile overkill if synchronization used
-
 	private volatile boolean fileTransmissionStopped;
 
 	public JobContext(JobId jobId, UserContext userContext, JobSpec spec, long jobCounter) {
@@ -105,8 +103,14 @@ public final class JobContext {
 		return tupleSpace;
 	}
 
-	public Set<CloseableMessageSink> connections() {
-		return Set.copyOf(connections);
+	void recordRejection(String workstationName) {
+		Objects.requireNonNull(workstationName);
+
+		rejectedByStations.add(workstationName);
+	}
+
+	public Set<String> rejectedBy() {
+		return Set.copyOf(rejectedByStations);
 	}
 
 	void addLindaConnection(CloseableMessageSink newConnection) {
@@ -152,6 +156,14 @@ public final class JobContext {
 		fileTransmissionStopped = false;
 	}
 
+	int incrementReschedulingCounter() {
+		return rescheduledTimes.getAndIncrement();
+	}
+
+	void resetReschedulingCounter() {
+		rescheduledTimes.set(0);
+	}
+
 	/**
 	 * Method for trying to change the status if new status transition is allowed according to the
 	 * {@link JobStatus#canAdvanceTo(JobStatus newJobStatus)}. If transition not allowed false value is returned.
@@ -193,6 +205,7 @@ public final class JobContext {
 		connections.forEach(CloseableMessageSink::close);
 		connections.clear();
 		assignedWorkstations.clear();
+		rejectedByStations.clear();
 	}
 
 	/**

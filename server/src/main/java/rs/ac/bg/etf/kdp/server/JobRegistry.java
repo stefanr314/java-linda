@@ -154,13 +154,9 @@ public final class JobRegistry {
 	}
 
 	public void requeued(JobId jobId) {
-		// TODO count the number of tries to assign the particular job to the station - just give up after hitting
-		//  the threshold
 		transit(jobId,
 				JobStatus.READY,
-				job -> {
-					job.prepareRequeue();
-				},
+				JobContext::prepareRequeue,
 				"Job is being rescheduled to get run on different station.");
 	}
 

@@ -11,6 +11,12 @@ import java.util.logging.Logger;
 
 public final class Scheduler {
 
+	/*
+	Limit of rescheduling allowed. First i.e. initial schedule is not counted by the present counter implementation
+	method.
+	 */
+	private static final int MAX_RESCHEDULING = 3;
+
 	private static final Logger LOGGER = Logger.getLogger(Scheduler.class.getName());
 
 	private final JobRegistry jobRegistry;
@@ -35,8 +41,6 @@ public final class Scheduler {
 	 * </p>
 	 */
 	public void scheduleReadyJobs() {
-		// NOTE: ready jobs is just a snapshot so upon taking the ready jobs it's required to hold a lock and try to
-		// update the status of the job to scheduled
 
 		List<JobContext> readyJobs = jobRegistry.readyJobs();
 		if (readyJobs.isEmpty()) return;
@@ -47,18 +51,27 @@ public final class Scheduler {
 		// races and execution/forwarding duplication of single job. With this one thread works with one ready job at
 		// exact moment.
 		for (JobContext job : readyJobs) {
-			// try to change status to scheduled - prior user client request for job abortion has occurred
 			if (!jobRegistry.scheduled(job.jobId())) continue;
 
-			// use the workstation registry to find the available station beware that at this time station may be
-			// disconnected - which result in holding a lock for a gone station. If no stations found just return.
-			Optional<WorkstationContext> optContext = workstationRegistry.tryFindFreeStation();
+			Optional<WorkstationContext> optContext = workstationRegistry.tryFindFreeStationExcept(job.rejectedBy());
+			if (optContext.isEmpty()) {
+				optContext = workstationRegistry.tryFindFreeStation();  // if no other stations present
+			}
 			if (optContext.isEmpty()) {
 				jobRegistry.requeued(job.jobId());
 				return;
 			}
 
 			WorkstationContext station = optContext.get();
+
+			// first schedule is not counted
+			if (job.incrementReschedulingCounter() > MAX_RESCHEDULING) {
+				jobRegistry.failed(job.jobId(), "Rescheduling hit the limit. " +
+						"Job could not be run on any stations.");
+				station.releaseSlot();
+				continue;
+			}
+
 			jobRegistry.assignedTo(job.jobId(), station.hostName());
 
 			try {
@@ -66,8 +79,6 @@ public final class Scheduler {
 
 				// if send proceeds to the other side, check is required to see if station is still alive
 				if (workstationRegistry.find(station.hostName()).orElse(null) != station) {
-					// station is gone and will not answer; job is in scheduled state so it's required to move it
-					// back to ready
 
 					jobRegistry.requeued(job.jobId());
 				}

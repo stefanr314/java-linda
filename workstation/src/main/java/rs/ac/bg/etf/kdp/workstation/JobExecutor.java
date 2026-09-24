@@ -337,7 +337,7 @@ public final class JobExecutor {
 
 		// in order to prevent deadlock if processes are too verbose (to output and err channels) it's required to
 		// drain them to separate logger files; these files serve for testing purposes since the client has already
-		// requested files he wants to be delivered to him (creation of these files is conducted by the client and
+		// requested files he wants to be delivered to him (creation of these files is conducted by the client, and
 		// it's his responsibility)
 		Thread stdout = new Thread(() -> {
 			try (InputStream processOut = job.getInputStream();

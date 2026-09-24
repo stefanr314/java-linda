@@ -1,9 +1,6 @@
 package rs.ac.bg.etf.kdp.server;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -60,6 +57,21 @@ public final class WorkstationRegistry {
 	 */
 	public Optional<WorkstationContext> tryFindFreeStation() {
 		for (WorkstationContext workstation : workstations.values()) {
+
+			if (workstation.tryAcquireSlot())
+				return Optional.of(workstation);
+		}
+		return Optional.empty();
+	}
+
+	/*
+	Same as tryFindFreeStation() except the excluded station that had already denied the job. Used by scheduler to
+	narrow the find process.
+	 */
+	public Optional<WorkstationContext> tryFindFreeStationExcept(Set<String> exceptStations) {
+		for (WorkstationContext workstation : workstations.values()) {
+			if (exceptStations.contains(workstation.hostName())) continue;
+
 			if (workstation.tryAcquireSlot())
 				return Optional.of(workstation);
 		}

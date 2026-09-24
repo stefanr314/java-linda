@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -21,17 +22,11 @@ public final class DecisionBroker implements AutoCloseable {
 
 	private static final Logger LOGGER = Logger.getLogger(DecisionBroker.class.getName());
 	private static final long DEFAULT_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(60);
-
-	private record PendingDecision(String reason, Instant deadline, ScheduledFuture<?> future) {
-	}
-
 	private final JobRegistry jobRegistry;
 	private final Scheduler scheduler;
 	private final long timeoutMillis;
-
 	// Guards pending decisions across handler threads, scheduler, and the single timeout thread
 	private final Map<JobId, PendingDecision> pendingDecisions = new ConcurrentHashMap<>();
-
 	private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
 		Thread daemon = new Thread(runnable, "decision-broker");
 		daemon.setDaemon(true);
@@ -110,6 +105,11 @@ public final class DecisionBroker implements AutoCloseable {
 		pending.future().cancel(false);
 
 		if (reschedule) {
+			Optional<JobContext> jobContext = jobRegistry.find(jobId);
+			if (jobContext.isEmpty()) {
+				return false;
+			}
+			jobContext.get().resetReschedulingCounter();  // reset when user wants reschedule
 			jobRegistry.requeued(jobId);
 			scheduler.scheduleReadyJobs();
 		} else {
@@ -121,5 +121,8 @@ public final class DecisionBroker implements AutoCloseable {
 	@Override
 	public void close() {
 		executor.shutdownNow();
+	}
+
+	private record PendingDecision(String reason, Instant deadline, ScheduledFuture<?> future) {
 	}
 }

@@ -14,51 +14,56 @@ import rs.ac.bg.etf.kdp.common.Linda;
  */
 public final class LindaFactory {
 
-    private static final String HOST_PROPERTY = "linda.host";
-    private static final String PORT_PROPERTY = "linda.port";
-    private static final String JOB_PROPERTY = "linda.job";
+	private static final String HOST_PROPERTY = "linda.host";
+	private static final String PORT_PROPERTY = "linda.port";
+	private static final String JOB_PROPERTY = "linda.job";
 
-    private static volatile Linda instance;
+	private static volatile Linda instance;
 
-    private LindaFactory() {
-    }
+	private LindaFactory() {
+	}
 
-    /**
-     * Returns the {@link Linda} handle for the current job, creating it on
-     * first call from the {@code linda.host}/{@code linda.port}/{@code
-     * linda.job} system properties.
-     *
-     * @return the process-wide {@link Linda} instance
-     * @throws IllegalStateException if the required system properties are
-     *         not set
-     */
-    public static Linda get() {
-        Linda result = instance;
+	/**
+	 * Returns the {@link Linda} handle for the current job, creating it on
+	 * first call from the {@code linda.host}/{@code linda.port}/{@code
+	 * linda.job} system properties.
+	 *
+	 * <p>Also, use helper class to watch on parent i.e. to react with halting when process is gone (for whatever
+	 * reason).</p>
+	 *
+	 * @return the process-wide {@link Linda} instance
+	 * @throws IllegalStateException if the required system properties are
+	 *                               not set
+	 */
+	public static Linda get() {
+		Linda result = instance;
 
-        if (result == null) {
-            synchronized (LindaFactory.class) {
-                result = instance;
+		if (result == null) {
+			synchronized (LindaFactory.class) {
+				result = instance;
 
-                if (result == null) {
-                    result = instance = createFromSystemProperties();
-                }
-            }
-        }
+				if (result == null) {
+					result = instance = createFromSystemProperties();
+				}
+			}
+		}
 
-        return result;
-    }
+		return result;
+	}
 
-    private static Linda createFromSystemProperties() {
-        String host = System.getProperty(HOST_PROPERTY);
-        String portValue = System.getProperty(PORT_PROPERTY);
-        String jobValue = System.getProperty(JOB_PROPERTY);
+	private static Linda createFromSystemProperties() {
+		String host = System.getProperty(HOST_PROPERTY);
+		String portValue = System.getProperty(PORT_PROPERTY);
+		String jobValue = System.getProperty(JOB_PROPERTY);
 
-        if (host == null || portValue == null || jobValue == null) {
-            throw new IllegalStateException(
-                    "system properties " + HOST_PROPERTY + ", " + PORT_PROPERTY + " and " + JOB_PROPERTY
-                            + " must all be set");
-        }
+		if (host == null || portValue == null || jobValue == null) {
+			throw new IllegalStateException(
+					"system properties " + HOST_PROPERTY + ", " + PORT_PROPERTY + " and " + JOB_PROPERTY
+							+ " must all be set");
+		}
 
-        return new LindaProxy(host, Integer.parseInt(portValue), new JobId(jobValue));
-    }
+		ParentWatchdog.guardOnce();
+
+		return new LindaProxy(host, Integer.parseInt(portValue), new JobId(jobValue));
+	}
 }

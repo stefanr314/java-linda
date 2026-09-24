@@ -135,8 +135,11 @@ public final class JobExecutor {
 	 * {@link #acceptEval}) is written into the job dir, alongside the input files just received.
 	 * </p>
 	 *
-	 * @param jobId      id of job to be executed.
-	 * @param jobDirPath path of job dir - on this path the process will start the job.
+	 * @param jobId          id of job to be executed.
+	 * @param spec           specification of job gained from outside.
+	 * @param jobDirPath     path of job dir - on this path the process will start the job.
+	 * @param serverHostname hostname of server.
+	 * @param serverPort     server port.
 	 */
 	public void execute(JobId jobId, JobSpec spec, Path jobDirPath, String serverHostname, int serverPort) {
 		Objects.requireNonNull(jobId);
@@ -246,9 +249,11 @@ public final class JobExecutor {
 	 * accessed. Otherwise, it just silently disappears once the thread terminates.
 	 * </p>
 	 *
-	 * @param jobId      id of job to supervise.
-	 * @param jobSpec    specification of job to supervise.
-	 * @param jobDirPath path to job directory.
+	 * @param jobId          id of job to supervise.
+	 * @param jobSpec        specification of job to supervise.
+	 * @param jobDirPath     path to job directory.
+	 * @param serverHostname hostname of server.
+	 * @param serverPort     port of server.
 	 */
 	private void supervise(JobId jobId, JobSpec jobSpec, Path jobDirPath,
 						   String serverHostname, int serverPort) {

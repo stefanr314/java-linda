@@ -35,7 +35,7 @@ public final class Scheduler {
 	 * </p>
 	 */
 	public void scheduleReadyJobs() {
-		// NOTE: ready jobs is just a snapshot so upon tacking the ready jobs it's required to hold a lock and try to
+		// NOTE: ready jobs is just a snapshot so upon taking the ready jobs it's required to hold a lock and try to
 		// update the status of the job to scheduled
 
 		List<JobContext> readyJobs = jobRegistry.readyJobs();

@@ -24,7 +24,7 @@ public class JobPreparator {
 	 * System property the eval bootstrap reads to find the workstation process it must watch:
 	 * children do not die with their parent, so the bootstrap halts itself once this pid is gone.
 	 */
-	private static final String EVAL_PARENT_PID_PROPERTY = "linda.ppid";
+	private static final String PARENT_PID_PROPERTY = "linda.ppid";
 
 	/**
 	 * Prepare regular user job. This method works only with java commands strictly written as: <em>java -jar
@@ -69,6 +69,7 @@ public class JobPreparator {
 				"-Dlinda.host=" + serverHostname,
 				"-Dlinda.port=" + serverPort,
 				"-Dlinda.job=" + jobId.value(),
+				"-D" + PARENT_PID_PROPERTY + "=" + ProcessHandle.current().pid(),
 				mainClassBinaryName};
 
 		if (args == null || args.length == 0) {
@@ -123,7 +124,7 @@ public class JobPreparator {
 				"-Dlinda.host=" + serverHostname,
 				"-Dlinda.port=" + serverPort,
 				"-Dlinda.job=" + parentJobId.value(),
-				"-D" + EVAL_PARENT_PID_PROPERTY + "=" + ProcessHandle.current().pid(),
+				"-D" + PARENT_PID_PROPERTY + "=" + ProcessHandle.current().pid(),
 				EVAL_BOOTSTRAP_MAIN_CLASS,
 				runnableFileName};
 

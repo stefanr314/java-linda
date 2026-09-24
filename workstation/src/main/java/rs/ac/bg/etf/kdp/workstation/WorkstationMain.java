@@ -105,6 +105,7 @@ public final class WorkstationMain implements AutoCloseable {
 			Runtime.getRuntime().addShutdownHook(
 					new Thread(() -> {
 						Runnable destroyAll = workstation.jobExecutor::destroyAll;
+						workstation.jobExecutor.deleteDirsOfRunningJobs();
 						destroyAll.run();
 					})
 			);
@@ -168,7 +169,6 @@ public final class WorkstationMain implements AutoCloseable {
 				// the rest of communication
 				waitForWork(in);
 			}
-
 		} catch (EOFException | SocketException e) {
 			// server was closed
 			LOGGER.log(Level.INFO, "Server closed its socket or an end of communication reached.");

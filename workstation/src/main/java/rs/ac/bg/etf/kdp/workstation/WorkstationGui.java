@@ -280,7 +280,7 @@ public final class WorkstationGui {
 	}
 
 	/*
-	Method for stopping the statio and performing the afterwards action on EDT
+	Method for stopping the statio and performing the afterward action on EDT
 	 */
 	private void stopWorkstation(Runnable afterwards) {
 		if (poller != null) {

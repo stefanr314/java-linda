@@ -255,16 +255,12 @@ This project demonstrates a complete distributed job execution and coordination 
    - All system state — including the `JobRegistry` and `TupleSpace` — is stored exclusively in the central server's volatile memory (RAM). A server crash results in the loss of all active tuples and job states.
    - *Potential Fix:* Add disk persistence (e.g., a Write-Ahead Log or embedded database) and primary-backup replication for the Tuple Space.
 
-3. **Tuple Space Inconsistency When Rescheduling (`reschedule`) a Interrupted Linda Job:**
-   - If a workstation crashes mid-execution after a Linda job has already emitted (`out`) or consumed (`in`) tuples from the `TupleSpace`, choosing `reschedule` restarts the job from the beginning. This can result in duplicate tuples or deadlocks if tuples consumed during the failed run are no longer present.
-   - *Potential Fix:* Introduce transactional tuple operations scoped to a job execution attempt (rolling back uncommitted `out`/`in` operations upon workstation failure) or tag tuples by `JobId` and purge them before restarting a rescheduled job.
-
-4. **Leftover Unfinished / Deprecated Classes in the `workstation` Module:**
+3. **Leftover Unfinished / Deprecated Classes in the `workstation` Module:**
    - The `rs.ac.bg.etf.kdp.workstation` package still contains `JobProcessLauncher` (whose `launch` method throws `UnsupportedOperationException("not yet implemented")`) and the `@Deprecated` `EvalRunner` class, whose responsibilities were superseded by `JobPreparator` and `JobExecutor`. Removing these dead classes would make the codebase cleaner.
 
-5. **Simple Argument Splitting & Lack of Process Sandboxing:**
+4. **Simple Argument Splitting & Lack of Process Sandboxing:**
    - Job command strings are tokenized via `.split(" ")`, which prevents passing command-line arguments containing spaces inside quotation marks.
    - Child jobs run as native OS processes under the same user account and permissions as the `workstation` daemon, without filesystem chroot/container isolation or per-process CPU/memory quotas.
 
-6. **Absence of Docker Configuration:**
+5. **Absence of Docker Configuration:**
    - Testing a multi-workstation cluster locally requires manually starting multiple JVM processes across terminals. Providing `Dockerfile` definitions and a `docker-compose.yml` file would streamline spinning up the server and multiple workstation nodes with a single command.
